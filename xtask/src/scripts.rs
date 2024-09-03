@@ -21,7 +21,7 @@ pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
                 "clone",
                 "--depth",
                 "1",
-                "git@github.com:sharkdp/bat.git",
+                "https://github.com/sharkdp/bat.git",
                 "lib/bat",
             ],
         )
