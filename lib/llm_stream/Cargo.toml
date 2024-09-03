@@ -7,10 +7,6 @@ repository = "https://github.com/cloudbridgeuy/llm-stream"
 edition = "2021"
 keywords = ["stream", "api", "llm", "api-bindings"]
 
-[lub]
-name = "llm_stream"
-path = "src/lib.rs"
-
 [dependencies]
 ureq = { version = "2.10.1", features = ["json"] }
 serde = { version = "1.0.209", features = ["derive"] }

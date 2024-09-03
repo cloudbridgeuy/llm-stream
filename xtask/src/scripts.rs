@@ -5,22 +5,60 @@ use duct::cmd;
 use std::error::Error;
 
 pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
-    let mut arguments = vec!["build", "--bin", &args.name];
+    if !std::path::Path::new("lib/bat/assets/themes/tokyonight").exists() {
+        println!(
+            "{$red}Error: {[yellow]} does not exist.{/$}",
+            "lib/bat/Cargo.lock"
+        );
+
+        println!("{$magenta}Cleaning lib/bat directory{/$}");
+        cmd("rm", ["-Rf", "lib/bat"]).read()?;
+
+        println!("{$magenta}Cloning {[yellow]}{/$}", "bat");
+        cmd(
+            "git",
+            [
+                "clone",
+                "--depth",
+                "1",
+                "git@github.com:sharkdp/bat.git",
+                "lib/bat",
+            ],
+        )
+        .read()?;
+
+        println!("{$magenta}Copying {[yellow]} theme{/$}", "tokyonight");
+        cmd(
+            "cp",
+            [
+                "-Rp",
+                "./crates/llm_stream/assets/themes/tokyonight",
+                "./lib/bat/assets/themes/",
+            ],
+        )
+        .read()?;
+    }
+
+    let mut arguments = vec!["build", "--verbose"];
 
     if args.release {
         arguments.push("--release");
     }
 
+    println!("{$magenta}Building...{/$}");
     cmd("cargo", arguments).read()?;
+
+    let output = cmd("cargo", ["run", "--bin", "llm-stream", "--", "--help"])
+        .stdout_capture()
+        .run()?;
+
+    println!("{}", String::from_utf8(output.stdout)?);
 
     Ok(())
 }
 
-fn release(name: &str) -> Result<(), Box<dyn Error>> {
-    let build_args = cli::BuildArgs {
-        name: name.to_string(),
-        release: true,
-    };
+fn release() -> Result<(), Box<dyn Error>> {
+    let build_args = cli::BuildArgs { release: true };
 
     build(&build_args)?;
 
@@ -28,7 +66,7 @@ fn release(name: &str) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn install(args: &cli::InstallArgs) -> Result<(), Box<dyn Error>> {
-    release(&args.name)?;
+    release()?;
 
     let target_path = "target/release/".to_string() + &args.name;
 
@@ -51,7 +89,7 @@ pub fn publish(args: &cli::PublishArgs) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn github(args: &cli::GithubArgs) -> Result<(), Box<dyn Error>> {
-    release(&args.name)?;
+    release()?;
 
     let version = utils::create_tag();
     let target_path = "target/release/".to_string() + &args.name;

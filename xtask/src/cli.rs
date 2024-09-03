@@ -22,10 +22,6 @@ pub enum Commands {
 
 #[derive(Args, Debug)]
 pub struct BuildArgs {
-    /// Name of the binary to run.
-    #[arg(short, long)]
-    pub name: String,
-
     /// Release flag
     #[arg(short, long)]
     pub release: bool,
