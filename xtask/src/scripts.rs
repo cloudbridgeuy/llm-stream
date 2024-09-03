@@ -8,7 +8,7 @@ pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
     if !std::path::Path::new("lib/bat/assets/themes/tokyonight").exists() {
         println!(
             "{$red}Error: {[yellow]} does not exist.{/$}",
-            "lib/bat/Cargo.lock"
+            "lib/bat/assets/themes/tokyonight"
         );
 
         println!("{$magenta}Cleaning lib/bat directory{/$}");
