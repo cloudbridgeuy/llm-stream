@@ -3,7 +3,7 @@ pub enum Error {
     #[error("io error")]
     Io(#[from] std::io::Error),
     #[error("unable to stream the api")]
-    EsStream(#[from] es_stream::error::Error),
+    EsStream(#[from] llm_stream::error::Error),
     #[error("unable to get value from environment variable")]
     EnvVar(#[from] std::env::VarError),
     #[error("invalid api")]

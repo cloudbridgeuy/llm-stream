@@ -1,5 +1,5 @@
 use anyhow::Result;
-use es_stream::anthropic::{Auth, Client, Message, MessageBody, Role};
+use llm_stream::anthropic::{Auth, Client, Message, MessageBody, Role};
 use futures::stream::TryStreamExt;
 use std::io::Write;
 

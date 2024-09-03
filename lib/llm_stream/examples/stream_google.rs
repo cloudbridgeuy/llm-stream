@@ -1,6 +1,6 @@
 use anyhow::Result;
-use es_stream::google::{Auth, Client, Content, MessageBody, Part, Role};
 use futures::stream::TryStreamExt;
+use llm_stream::google::{Auth, Client, Content, MessageBody, Part, Role};
 use std::io::Write;
 
 #[tokio::main]

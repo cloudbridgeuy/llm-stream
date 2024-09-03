@@ -1,5 +1,5 @@
 [package]
-name = "es_stream"
+name = "llm_stream"
 version = "0.1.0"
 description = "A very simple Rust library to simplify streaming api interaction with LLMs, free from complex async operations and redundant dependencies."
 license = "MIT"
@@ -8,7 +8,7 @@ edition = "2021"
 keywords = ["stream", "api", "llm", "api-bindings"]
 
 [lub]
-name = "es_stream"
+name = "llm_stream"
 path = "src/lib.rs"
 
 [dependencies]

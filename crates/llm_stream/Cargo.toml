@@ -10,7 +10,7 @@ edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "e"
+name = "llm_stream"
 path = "src/main.rs"
 
 [dependencies]

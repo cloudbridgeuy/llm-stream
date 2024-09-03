@@ -1,6 +1,6 @@
 use anyhow::Result;
-use es_stream::mistral_fim::{Auth, Client, MessageBody};
 use futures::stream::TryStreamExt;
+use llm_stream::mistral_fim::{Auth, Client, MessageBody};
 use std::io::Write;
 
 #[tokio::main]

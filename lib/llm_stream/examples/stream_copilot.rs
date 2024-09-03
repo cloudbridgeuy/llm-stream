@@ -1,6 +1,6 @@
 use anyhow::Result;
-use es_stream::openai::{Auth, Client, Message, MessageBody, Role};
 use futures::stream::TryStreamExt;
+use llm_stream::openai::{Auth, Client, Message, MessageBody, Role};
 use std::io::Write;
 
 #[tokio::main]

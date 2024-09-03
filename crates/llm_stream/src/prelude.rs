@@ -9,7 +9,7 @@ pub use crate::error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub async fn handle_stream(
-    mut stream: impl Stream<Item = std::result::Result<String, es_stream::error::Error>>
+    mut stream: impl Stream<Item = std::result::Result<String, llm_stream::error::Error>>
         + std::marker::Unpin,
     quiet: bool,
     language: String,
