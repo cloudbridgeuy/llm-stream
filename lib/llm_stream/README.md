@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
 }
 ```
 
-For more in-depth examples and usage instructions, refer to the examples directory: [./lib/llm_stream/examples](./lib/llm_stream/examples) %
+For more in-depth examples and usage instructions, refer to the examples directory: [./lib/llm_stream/examples](./examples).
 
 ## 🔐 Authentication
 

@@ -120,4 +120,4 @@ llm-stream --vars '{ "programming_language": "javascript" }' \
 
 We welcome contributions from the community! If you have any ideas, bug reports, or feature requests, please open an issue or submit a pull request on the [GitHub repository](https://github.com/cloudbridgeuy/llm-stream).
 
-Let's build an awesome CLI tool for interacting with LLMs together! 🎉%
+Let's build an awesome CLI tool for interacting with LLMs together! 🎉
