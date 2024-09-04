@@ -110,9 +110,15 @@ pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn publish(args: &cli::PublishArgs) -> Result<(), Box<dyn Error>> {
-    let version = &args.version;
+    let version = &args.next_version;
 
-    println!("{$magenta}Publishing {[yellow]}{/$}", &version);
+    println!("{$magenta}Running the changelog command{/$}");
+    changelog(&cli::ChangelogArgs {
+        prev_version: args.prev_version.clone(),
+        next_version: version.clone(),
+    })?;
+
+    println!("{$magenta}Publishing {[yellow]} to GitHub{/$}", &version);
     github(&GithubArgs {
         version: version.clone(),
     })?;

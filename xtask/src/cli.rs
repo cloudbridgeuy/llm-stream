@@ -31,9 +31,13 @@ pub struct BuildArgs {
 
 #[derive(Args, Debug)]
 pub struct PublishArgs {
-    /// Version to be published.
+    /// The previous version of the library.
     #[arg(short, long)]
-    pub version: String,
+    pub prev_version: String,
+
+    /// The next version of the library.
+    #[arg(short, long)]
+    pub next_version: String,
 
     /// Dry run flag.
     #[arg(short, long)]
