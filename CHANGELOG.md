@@ -1,19 +1,9 @@
 # Changelog
 
-## [0.0.1] - 2023-05-18
+## 0.0.1
 
 ### Added
 
 #### Global
 
-- Initial commit
-
-#### xtask
-
-- New changelog command added
-
-### Changed
-
-#### Global
-
-- Updated README.md
+- Initial project setup and configuration

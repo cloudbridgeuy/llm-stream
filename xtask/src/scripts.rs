@@ -42,7 +42,14 @@ pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
 
     let mut arguments = vec!["build", "--verbose"];
 
+    if let Some(bin) = &args.bin {
+        println!("{$magenta}Building {[yellow]}{/$}", bin);
+        arguments.push("--bin");
+        arguments.push(bin);
+    }
+
     if args.release {
+        println!("{$magenta}Building in release mode{/$}");
         arguments.push("--release");
     }
 
@@ -52,8 +59,8 @@ pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn release() -> Result<(), Box<dyn Error>> {
-    let build_args = cli::BuildArgs { release: true };
+fn release(bin: Option<String>) -> Result<(), Box<dyn Error>> {
+    let build_args = cli::BuildArgs { release: true, bin };
 
     build(&build_args)?;
 
@@ -61,7 +68,7 @@ fn release() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn install(args: &cli::InstallArgs) -> Result<(), Box<dyn Error>> {
-    release()?;
+    release(Some(args.name.clone()))?;
 
     let target_path = "target/release/".to_string() + &args.name;
 
@@ -121,6 +128,7 @@ pub fn publish(args: &cli::PublishArgs) -> Result<(), Box<dyn Error>> {
     println!("{$magenta}Publishing {[yellow]} to GitHub{/$}", &version);
     github(&GithubArgs {
         version: version.clone(),
+        bin: args.bin.clone(),
     })?;
 
     let mut arguments = vec!["publish", "--package", "llm_stream"];
@@ -135,10 +143,9 @@ pub fn publish(args: &cli::PublishArgs) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn github(args: &cli::GithubArgs) -> Result<(), Box<dyn Error>> {
-    release()?;
+    release(args.bin.clone())?;
 
     let version = &args.version;
-    let target_path = "target/release/".to_string() + version;
     let notes = "Release notes for ".to_string() + version;
 
     println!("{$magenta}Creating {[yellow]} tag{/$}", &version);
@@ -163,14 +170,23 @@ pub fn github(args: &cli::GithubArgs) -> Result<(), Box<dyn Error>> {
         "{$magenta}Uploading {[yellow]} release binary{/$}",
         &version
     );
-    cmd("gh", ["gh", "auth", "login", "--with-token"])
-        .stdin_bytes(std::env::var("GITHUB_PAT_CLOUDBRIDGEUY")?)
+    println!("{$magenta}Logging into GitHub{/$}");
+    if let Some(bin) = &args.bin {
+        let target_path = "target/release/".to_string() + bin;
+
+        cmd("gh", ["gh", "auth", "login", "--with-token"])
+            .stdin_bytes(std::env::var("GITHUB_PAT_CLOUDBRIDGEUY")?)
+            .run()?;
+        println!(
+            "{$magenta}Uploading {[yellow]} release binary{/$}",
+            &version
+        );
+        cmd(
+            "gh",
+            ["release", "upload", version, &target_path, "--clobber"],
+        )
         .run()?;
-    cmd(
-        "gh",
-        ["release", "upload", version, &target_path, "--clobber"],
-    )
-    .run()?;
+    }
 
     Ok(())
 }

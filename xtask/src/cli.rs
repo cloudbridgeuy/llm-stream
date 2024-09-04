@@ -27,6 +27,10 @@ pub struct BuildArgs {
     /// Release flag
     #[arg(short, long)]
     pub release: bool,
+
+    /// Binary to build and publish.
+    #[arg(short, long)]
+    pub bin: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -38,6 +42,10 @@ pub struct PublishArgs {
     /// The next version of the library.
     #[arg(short, long)]
     pub next_version: String,
+
+    /// Binary to build and publish.
+    #[arg(short, long)]
+    pub bin: Option<String>,
 
     /// Dry run flag.
     #[arg(short, long)]
@@ -71,4 +79,8 @@ pub struct GithubArgs {
     /// Version to be published.
     #[arg(short, long)]
     pub version: String,
+
+    /// Binary to build and publish.
+    #[arg(short, long)]
+    pub bin: Option<String>,
 }
