@@ -18,6 +18,8 @@ pub enum Commands {
     Publish(PublishArgs),
     /// Creates a new GitHub release
     Github(GithubArgs),
+    /// Creates a new Changelog entry using `git` and `e`.
+    Changelog(ChangelogArgs),
 }
 
 #[derive(Args, Debug)]
@@ -47,6 +49,17 @@ pub struct InstallArgs {
     /// Path to install the binary to.
     #[arg(short, long)]
     pub path: String,
+}
+
+#[derive(Args, Debug)]
+pub struct ChangelogArgs {
+    /// The previous version of the library.
+    #[arg(short, long)]
+    pub prev_version: String,
+
+    /// The next version of the library.
+    #[arg(short, long)]
+    pub next_version: String,
 }
 
 #[derive(Args, Debug)]

@@ -3,6 +3,7 @@ use crate::cli::GithubArgs;
 use bunt::println;
 use duct::cmd;
 use std::error::Error;
+use std::io::Write;
 
 pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
     if !std::path::Path::new("lib/bat/assets/themes/tokyonight").exists() {
@@ -66,6 +67,44 @@ pub fn install(args: &cli::InstallArgs) -> Result<(), Box<dyn Error>> {
 
     cmd!("cp", &target_path, &args.path).run()?;
     cmd!("chmod", "+x", &args.path).run()?;
+
+    Ok(())
+}
+
+pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
+    let prev_version = &args.prev_version;
+
+    println!("{$magenta}Generating changelog{/$}");
+    let log = cmd(
+        "git",
+        [
+            "log",
+            &(format!("{prev_version}..HEAD")),
+            "--pretty=format:'%h %ad %s'",
+            "--date=short",
+        ],
+    )
+    .stdout_capture()
+    .run()?
+    .stdout;
+
+    println!("{$magenta}Creating changelog entry{/$}");
+    let changelog = String::from_utf8(
+        cmd("e", ["--preset", "sonnet", "--template", "changelog"])
+            .stdout_capture()
+            .stdin_bytes(log)
+            .run()?
+            .stdout,
+    )?;
+
+    println!("{$magenta}Updating CHANGELOG.md{/$}");
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open("CHANGELOG.md")?
+        .write_all(changelog.as_bytes())?;
+
+    println!("{$magenta}Opening CHANGELOG.md in editor{/$}");
+    cmd(std::env::var("EDITOR")?, ["CHANGELOG.md"]).run()?;
 
     Ok(())
 }

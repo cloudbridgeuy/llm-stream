@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cli::Commands::Publish(args) => scripts::publish(args),
             cli::Commands::Github(args) => scripts::github(args),
             cli::Commands::Install(args) => scripts::install(args),
+            cli::Commands::Changelog(args) => scripts::changelog(args),
         },
         None => {
             println!("No command specified.");
