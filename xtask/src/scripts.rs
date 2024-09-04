@@ -87,7 +87,7 @@ pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
         [
             "log",
             &(format!("{prev_version}..HEAD")),
-            "--pretty=format:'%h %ad %s'",
+            "--pretty=format:'%h %ad %B'",
             "--date=short",
         ],
     )
