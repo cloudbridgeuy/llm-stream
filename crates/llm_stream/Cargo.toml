@@ -14,7 +14,7 @@ name = "llm-stream"
 path = "src/main.rs"
 
 [dependencies]
-llm_stream = { version = "0.1.0", path = "../../lib/llm_stream" }
+llm_stream = { version = "0.2.0", path = "../../lib/llm_stream" }
 clap = { version = "4.5.16", features = ["derive", "string", "env"] }
 serde = { version = "1.0.209", features = ["derive"] }
 serde_json = "1.0.127"
