@@ -95,13 +95,25 @@ pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
     .run()?
     .stdout;
 
+    println!("{}", String::from_utf8(log)?);
+
     println!("{$magenta}Creating changelog entry{/$}");
     let changelog = String::from_utf8(
-        cmd("e", ["--preset", "sonnet", "--template", "changelog"])
-            .stdout_capture()
-            .stdin_bytes(log)
-            .run()?
-            .stdout,
+        cmd(
+            "e",
+            [
+                "--preset",
+                "sonnet",
+                "--template",
+                "changelog",
+                "--vars",
+                serde_json::json!({}),
+            ],
+        )
+        .stdout_capture()
+        .stdin_bytes(log)
+        .run()?
+        .stdout,
     )?;
 
     println!("{$magenta}Updating CHANGELOG.md{/$}");
@@ -162,21 +174,25 @@ pub fn github(args: &cli::GithubArgs) -> Result<(), Box<dyn Error>> {
     )
     .env("GIT_COMMITTER_DATE", git_committer_date)
     .run()?;
+
     println!("{$magenta}Pusing {[yellow]} tag{/$}", &version);
     cmd!("git", "push", "origin", &version).run()?;
+
+    println!("{$magenta}Logging into GitHub{/$}");
+    cmd("gh", ["gh", "auth", "login", "--with-token"])
+        .stdin_bytes(std::env::var("GITHUB_PAT_CLOUDBRIDGEUY")?)
+        .run()?;
+
     println!("{$magenta}Creating {[yellow]} release{/$}", &version);
     cmd!("gh", "release", "create", &version, "--title", &version, "--notes", &notes).run()?;
+
     println!(
         "{$magenta}Uploading {[yellow]} release binary{/$}",
         &version
     );
-    println!("{$magenta}Logging into GitHub{/$}");
     if let Some(bin) = &args.bin {
         let target_path = "target/release/".to_string() + bin;
 
-        cmd("gh", ["gh", "auth", "login", "--with-token"])
-            .stdin_bytes(std::env::var("GITHUB_PAT_CLOUDBRIDGEUY")?)
-            .run()?;
         println!(
             "{$magenta}Uploading {[yellow]} release binary{/$}",
             &version
