@@ -95,8 +95,6 @@ pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
     .run()?
     .stdout;
 
-    println!("{}", String::from_utf8(log)?);
-
     println!("{$magenta}Creating changelog entry{/$}");
     let changelog = String::from_utf8(
         cmd(
@@ -107,7 +105,7 @@ pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
                 "--template",
                 "changelog",
                 "--vars",
-                serde_json::json!({}),
+                serde_json::json!({"prev_version": &args.prev_version.clone(), "next_version":  &args.next_version.clone()}).to_string().as_ref(),
             ],
         )
         .stdout_capture()
