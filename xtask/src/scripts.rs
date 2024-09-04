@@ -177,7 +177,7 @@ pub fn github(args: &cli::GithubArgs) -> Result<(), Box<dyn Error>> {
     cmd!("git", "push", "origin", &version).run()?;
 
     println!("{$magenta}Logging into GitHub{/$}");
-    cmd("gh", ["gh", "auth", "login", "--with-token"])
+    cmd("gh", ["auth", "login", "--with-token"])
         .stdin_bytes(std::env::var("GITHUB_PAT_CLOUDBRIDGEUY")?)
         .run()?;
 
