@@ -1,5 +1,5 @@
 use crate::cli;
-use crate::utils;
+use crate::cli::GithubArgs;
 use bunt::println;
 use duct::cmd;
 use std::error::Error;
@@ -48,12 +48,6 @@ pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
     println!("{$magenta}Building...{/$}");
     cmd("cargo", arguments).read()?;
 
-    let output = cmd("cargo", ["run", "--bin", "llm-stream", "--", "--help"])
-        .stdout_capture()
-        .run()?;
-
-    println!("{}", String::from_utf8(output.stdout)?);
-
     Ok(())
 }
 
@@ -77,7 +71,14 @@ pub fn install(args: &cli::InstallArgs) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn publish(args: &cli::PublishArgs) -> Result<(), Box<dyn Error>> {
-    let mut arguments = vec!["publish", "--package", &args.name];
+    let version = &args.version;
+
+    println!("{$magenta}Publishing {[yellow]}{/$}", &version);
+    github(&GithubArgs {
+        version: version.clone(),
+    })?;
+
+    let mut arguments = vec!["publish", "--package", "llm_stream"];
 
     if args.dry_run {
         arguments.push("--dry-run");
@@ -91,12 +92,24 @@ pub fn publish(args: &cli::PublishArgs) -> Result<(), Box<dyn Error>> {
 pub fn github(args: &cli::GithubArgs) -> Result<(), Box<dyn Error>> {
     release()?;
 
-    let version = utils::create_tag();
-    let target_path = "target/release/".to_string() + &args.name;
-    let notes = "Release notes for ".to_string() + &version;
+    let version = &args.version;
+    let target_path = "target/release/".to_string() + version;
+    let notes = "Release notes for ".to_string() + version;
 
     println!("{$magenta}Creating {[yellow]} tag{/$}", &version);
-    cmd!("git", "tag", "-a", &version, "-m", &version).run()?;
+    let git_committer_date = String::from_utf8(
+        cmd("git", ["log", "-n1", "--pretty=%aD"])
+            .stdout_capture()
+            .run()?
+            .stdout,
+    )?;
+
+    cmd(
+        "git",
+        ["tag", "-a", "-m", &(format!("Release {version}")), version],
+    )
+    .env("GIT_COMMITTER_DATE", git_committer_date)
+    .run()?;
     println!("{$magenta}Pusing {[yellow]} tag{/$}", &version);
     cmd!("git", "push", "origin", &version).run()?;
     println!("{$magenta}Creating {[yellow]} release{/$}", &version);
@@ -105,13 +118,12 @@ pub fn github(args: &cli::GithubArgs) -> Result<(), Box<dyn Error>> {
         "{$magenta}Uploading {[yellow]} release binary{/$}",
         &version
     );
-    cmd!(
+    cmd("gh", ["gh", "auth", "login", "--with-token"])
+        .stdin_bytes(std::env::var("GITHUB_PAT_CLOUDBRIDGEUY")?)
+        .run()?;
+    cmd(
         "gh",
-        "release",
-        "upload",
-        &version,
-        &target_path,
-        "--clobber"
+        ["release", "upload", version, &target_path, "--clobber"],
     )
     .run()?;
 

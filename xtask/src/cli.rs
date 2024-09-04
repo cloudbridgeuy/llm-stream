@@ -29,9 +29,9 @@ pub struct BuildArgs {
 
 #[derive(Args, Debug)]
 pub struct PublishArgs {
-    /// Name of the library to publish.
+    /// Version to be published.
     #[arg(short, long)]
-    pub name: String,
+    pub version: String,
 
     /// Dry run flag.
     #[arg(short, long)]
@@ -51,7 +51,7 @@ pub struct InstallArgs {
 
 #[derive(Args, Debug)]
 pub struct GithubArgs {
-    /// Name of the binary to run.
+    /// Version to be published.
     #[arg(short, long)]
-    pub name: String,
+    pub version: String,
 }
