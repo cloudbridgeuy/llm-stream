@@ -6,11 +6,11 @@ const DEFAULT_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_MODEL: &str = "gemini-1.5-pro";
 const DEFAULT_ENV: &str = "GOOGLE_API_KEY";
 
-pub async fn run(prompt: String, args: Args) -> Result<()> {
-    let key = match args.globals.api_key {
+pub async fn run(prompt: String, mut args: Args) -> Result<()> {
+    let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
-            let environment_variable = match args.globals.api_env {
+            let environment_variable = match args.globals.api_env.take() {
                 Some(env) => env,
                 None => DEFAULT_ENV.to_string(),
             };
@@ -19,7 +19,7 @@ pub async fn run(prompt: String, args: Args) -> Result<()> {
     };
     log::info!("key: {}", key);
 
-    let url = match args.globals.api_base_url {
+    let url = match args.globals.api_base_url.take() {
         Some(url) => url,
         None => DEFAULT_URL.to_string(),
     };
@@ -39,12 +39,13 @@ pub async fn run(prompt: String, args: Args) -> Result<()> {
     let mut body = google::MessageBody::new(
         args.globals
             .model
+            .take()
             .unwrap_or(DEFAULT_MODEL.to_string())
             .as_ref(),
         contents,
     );
 
-    if let Some(system) = args.globals.system {
+    if let Some(system) = args.globals.system.take() {
         let system_message = google::Content {
             parts: vec![google::Part { text: system }],
             role: google::Role::User,
@@ -65,10 +66,5 @@ pub async fn run(prompt: String, args: Args) -> Result<()> {
 
     let stream = client.delta(&body)?;
 
-    handle_stream(
-        stream,
-        args.globals.quiet.unwrap_or(false),
-        args.globals.language,
-    )
-    .await
+    handle_stream(stream, args.globals).await
 }

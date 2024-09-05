@@ -41,15 +41,35 @@ async fn main() -> Result<()> {
     log::info!("info: {:#?}", args.globals);
 
     let home = std::env::var("HOME")?;
-    let path = args.globals.config_file.clone().replace('~', &home);
+    args.globals.config_dir = args.globals.config_dir.clone().replace('~', &home);
 
-    log::info!("path: {:#?}", path);
+    if !std::path::Path::new(&args.globals.config_dir).exists() {
+        std::fs::create_dir_all(args.globals.config_dir.clone())?;
+    }
+
+    let config_dir = args.globals.config_dir.clone();
+
+    args.globals.config_file = if let Some(config_file) = args.globals.config_file {
+        Some(config_file.clone().replace('~', &home))
+    } else {
+        Some(config_dir.to_string() + "/config.toml")
+    };
+
+    let config_file = args.globals.config_file.clone().unwrap();
+
+    log::info!("config_dir: {}", &config_dir);
+    log::info!("config_file: {}", &config_file);
 
     // Check if `path` exists
-    let config = if !std::path::Path::new(&path).exists() {
-        Config::default()
+    let config = if !std::path::Path::new(&config_file).exists() {
+        let config = Config::new();
+        let config_toml = toml::to_string(&config)?;
+        // Store `config_toml` in the `&config_file` path.
+        std::fs::write(&config_file, config_toml)?;
+
+        config
     } else {
-        Config::from_config_file(path)?
+        Config::from_config_file(&config_file)?
     };
 
     log::info!("config: {:#?}", config);
@@ -129,6 +149,12 @@ async fn main() -> Result<()> {
     }
     if args.globals.quiet.is_none() {
         args.globals.quiet = config.quiet;
+    }
+    if args.globals.language.is_none() {
+        args.globals.language = config.language;
+    }
+    if args.globals.theme.is_none() {
+        args.globals.theme = config.theme;
     }
     if api.is_none() {
         api = config.api;

@@ -22,6 +22,8 @@ pub enum Error {
     TemplateNotFound,
     #[error("tera error")]
     Tera(#[from] tera::Error),
+    #[error("toml error")]
+    Toml(#[from] toml::ser::Error),
 }
 
 pub(crate) fn format_error(

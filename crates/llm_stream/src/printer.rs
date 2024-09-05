@@ -13,8 +13,12 @@ pub struct CustomPrinter<'a> {
 }
 
 impl<'a> CustomPrinter<'a> {
-    pub fn new(language: &'a str) -> Result<Self> {
-        let theme = std::env::var("BAT_THEME").unwrap_or_else(|_| DEFAULT_THEME.to_string());
+    pub fn new(language: &'a str, theme: Option<&'a str>) -> Result<Self> {
+        let theme = if let Some(theme) = theme {
+            theme.to_string()
+        } else {
+            std::env::var("BAT_THEME").unwrap_or_else(|_| DEFAULT_THEME.to_string())
+        };
 
         let config = bat::config::Config {
             colored_output: true,

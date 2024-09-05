@@ -68,9 +68,13 @@ pub struct Globals {
     #[clap(long)]
     pub top_k: Option<u32>,
 
-    /// Config file
-    #[clap(long, default_value = "~/.config/e.toml")]
-    pub config_file: String,
+    /// Config dir where the configuration and conversation history will be stored.
+    #[clap(long, default_value = "~/.config/llm-stream")]
+    pub config_dir: String,
+
+    /// Config file. If undefined, it will be set as `config_dir/config.toml`.
+    #[clap(long)]
+    pub config_file: Option<String>,
 
     /// Preset configuration
     #[clap(short, long)]
@@ -86,7 +90,11 @@ pub struct Globals {
 
     /// Language to use for syntax highlight
     #[clap(long, default_value = "markdown")]
-    pub language: String,
+    pub language: Option<String>,
+
+    /// Language to use for syntax highlight
+    #[clap(long, default_value = "ansi")]
+    pub theme: Option<String>,
 
     /// Prompt template to use
     #[clap(short, long)]

@@ -6,11 +6,11 @@ const DEFAULT_URL: &str = "https://api.mistral.ai/v1";
 const DEFAULT_MODEL: &str = "codestral-2405";
 const DEFAULT_ENV: &str = "MISTRAL_API_KEY";
 
-pub async fn run(prompt: String, args: Args) -> Result<()> {
-    let key = match args.globals.api_key {
+pub async fn run(prompt: String, mut args: Args) -> Result<()> {
+    let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
-            let environment_variable = match args.globals.api_env {
+            let environment_variable = match args.globals.api_env.take() {
                 Some(env) => env,
                 None => DEFAULT_ENV.to_string(),
             };
@@ -19,7 +19,7 @@ pub async fn run(prompt: String, args: Args) -> Result<()> {
     };
     log::info!("key: {}", key);
 
-    let url = match args.globals.api_base_url {
+    let url = match args.globals.api_base_url.take() {
         Some(url) => url,
         None => DEFAULT_URL.to_string(),
     };
@@ -37,10 +37,11 @@ pub async fn run(prompt: String, args: Args) -> Result<()> {
     let mut body = mistral_fim::MessageBody::new(
         args.globals
             .model
+            .take()
             .unwrap_or(DEFAULT_MODEL.to_string())
             .as_ref(),
         prompt,
-        args.globals.suffix,
+        args.globals.suffix.take(),
     );
 
     body.temperature = args.globals.temperature;
@@ -56,10 +57,5 @@ pub async fn run(prompt: String, args: Args) -> Result<()> {
 
     let stream = client.delta(&body)?;
 
-    handle_stream(
-        stream,
-        args.globals.quiet.unwrap_or(false),
-        args.globals.language,
-    )
-    .await
+    handle_stream(stream, args.globals).await
 }

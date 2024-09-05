@@ -20,8 +20,7 @@ pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
             "git",
             [
                 "clone",
-                "--depth",
-                "1",
+                "--recursive",
                 "https://github.com/sharkdp/bat.git",
                 "lib/bat",
             ],
@@ -38,6 +37,9 @@ pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
             ],
         )
         .read()?;
+
+        println!("{$magenta}Creating themes for {[yellow]}{/$}", "bat");
+        cmd("bash", ["lib/bat/assets/create.sh"]).read()?;
     }
 
     let mut arguments = vec!["build", "--verbose"];

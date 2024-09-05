@@ -2,7 +2,7 @@ use futures::stream::{Stream, TryStreamExt};
 use serde_json::Value;
 use std::io::Write;
 
-pub use crate::args::{Api, Args};
+pub use crate::args::{Api, Args, Globals};
 pub use crate::config::Config;
 pub use crate::error::Error;
 
@@ -11,15 +11,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub async fn handle_stream(
     mut stream: impl Stream<Item = std::result::Result<String, llm_stream::error::Error>>
         + std::marker::Unpin,
-    quiet: bool,
-    language: String,
+    globals: Globals,
 ) -> Result<()> {
     let mut previous_output = String::new();
     let mut accumulated_content_bytes: Vec<u8> = Vec::new();
 
     let is_terminal = atty::is(atty::Stream::Stdout);
 
-    let mut sp = if !quiet && is_terminal {
+    let mut sp = if globals.quiet.is_none() || (globals.quiet == Some(false) && is_terminal) {
         Some(spinners::Spinner::new(
             spinners::Spinners::OrangeBluePulse,
             "Loading...".into(),
@@ -27,6 +26,9 @@ pub async fn handle_stream(
     } else {
         None
     };
+
+    let language = globals.language.unwrap_or("markdown".to_string());
+    let theme = Some(globals.theme.unwrap_or("ansi".to_string()));
 
     while let Ok(Some(text)) = stream.try_next().await {
         if is_terminal && sp.is_some() {
@@ -47,7 +49,7 @@ pub async fn handle_stream(
 
         accumulated_content_bytes.extend_from_slice(text.as_bytes());
 
-        let output = crate::printer::CustomPrinter::new(&language)?
+        let output = crate::printer::CustomPrinter::new(&language, theme.as_deref())?
             .input_from_bytes(&accumulated_content_bytes)
             .print()?;
 
