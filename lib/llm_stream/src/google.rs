@@ -1,10 +1,9 @@
-use eventsource_client as es;
-use futures::stream::{Stream, StreamExt};
+use eventsource_client::{Client as EsClient, ClientBuilder, ReconnectOptions, SSE};
+use futures::stream::{Stream, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 use crate::error::Error;
-use crate::requests::{Json, Requests};
 
 // Chat Completions Api
 const STREAM_GENERATE_CONTENT_TEMPLATE: &str =
@@ -174,19 +173,28 @@ impl Client {
 
         let sub_url =
             STREAM_GENERATE_CONTENT_TEMPLATE.replace("{{model}}", message_body.model.as_str());
+        let url = &(self.api_url.clone() + &sub_url);
+        let url = url.replace("{{key}}", &self.auth.api_key);
 
-        let original_stream = match self.post_stream(sub_url, request_body) {
-            Ok(stream) => stream,
-            Err(e) => return Err(Error::EventsourceClient(e)),
-        };
+        let client = ClientBuilder::for_url(&url)?
+            .header("content-type", "application/json")?
+            .method("POST".into())
+            .body(request_body.to_string())
+            .reconnect(
+                ReconnectOptions::reconnect(true)
+                    .retry_initial(false)
+                    .delay(Duration::from_secs(1))
+                    .backoff_factor(2)
+                    .delay_max(Duration::from_secs(60))
+                    .build(),
+            )
+            .build();
 
-        let mapped_stream = original_stream.map(|item| {
-            if item.is_err() {
-                return Err(Error::EventsourceClient(item.err().unwrap()));
-            }
-            item.map(|event| match event {
-                es::SSE::Connected(_) => String::default(),
-                es::SSE::Event(ev) => match serde_json::from_str::<Root>(&ev.data) {
+        let stream = Box::pin(client.stream())
+            .map_err(Error::from)
+            .map_ok(|event| match event {
+                SSE::Connected(_) => String::default(),
+                SSE::Event(ev) => match serde_json::from_str::<Root>(&ev.data) {
                     Ok(root) => {
                         if root.candidates[0].content.parts.is_empty() {
                             String::default()
@@ -196,41 +204,12 @@ impl Client {
                     }
                     Err(_) => String::default(),
                 },
-                es::SSE::Comment(comment) => {
+                SSE::Comment(comment) => {
                     log::debug!("Comment: {:#?}", comment);
                     String::default()
                 }
-            })
-            .map_err(Error::from)
-        });
+            });
 
-        Ok(mapped_stream)
-    }
-}
-
-impl Requests for Client {
-    fn post_stream(
-        &self,
-        sub_url: String,
-        body: Json,
-    ) -> Result<impl Stream<Item = Result<es::SSE, es::Error>>, es::Error> {
-        let url = &(self.api_url.clone() + &sub_url);
-        let url = url.replace("{{key}}", &self.auth.api_key);
-
-        let client = es::ClientBuilder::for_url(&url)?
-            .header("content-type", "application/json")?
-            .method("POST".into())
-            .body(body.to_string())
-            .reconnect(
-                es::ReconnectOptions::reconnect(true)
-                    .retry_initial(false)
-                    .delay(Duration::from_secs(1))
-                    .backoff_factor(2)
-                    .delay_max(Duration::from_secs(60))
-                    .build(),
-            )
-            .build();
-
-        Ok(crate::requests::tail(&client))
+        Ok(stream)
     }
 }

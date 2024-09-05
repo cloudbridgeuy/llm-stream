@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+### Changed
+
+- **llm_stream**: Update llm_stream dependency to version 0.2.0
+
+### Chore
+
+- **llm_stream**: Bump version to 0.2.0
+
 ## 0.0.3
 
 ### Added

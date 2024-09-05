@@ -1,11 +1,10 @@
-use eventsource_client as es;
-use futures::stream::{Stream, StreamExt};
+use eventsource_client::{Client as EsClient, ClientBuilder, ReconnectOptions, SSE};
+use futures::stream::{Stream, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::error::Error;
-use crate::requests::{Json, Requests};
 
 // Messages API
 const MESSAGES_CREATE: &str = "/messages";
@@ -216,18 +215,29 @@ impl Client {
         };
         log::debug!("request_body: {:#?}", request_body);
 
-        let original_stream = match self.post_stream(MESSAGES_CREATE.to_string(), request_body) {
-            Ok(stream) => stream,
-            Err(e) => return Err(Error::EventsourceClient(e)),
-        };
+        let anthropic_version = self.auth.version.as_deref().unwrap_or("2023-06-01");
 
-        let mapped_stream = original_stream.map(|item| {
-            if item.is_err() {
-                return Err(Error::EventsourceClient(item.err().unwrap()));
-            }
-            item.map(|event| match event {
-                es::SSE::Connected(_) => String::default(),
-                es::SSE::Event(ev) => match serde_json::from_str::<MessageEvent>(&ev.data) {
+        let client = ClientBuilder::for_url(&(self.api_url.clone() + MESSAGES_CREATE))?
+            .header("anthropic-version", anthropic_version)?
+            .header("content-type", "application/json")?
+            .header("x-api-key", &self.auth.api_key)?
+            .method("POST".into())
+            .body(request_body.to_string())
+            .reconnect(
+                ReconnectOptions::reconnect(true)
+                    .retry_initial(false)
+                    .delay(Duration::from_secs(1))
+                    .backoff_factor(2)
+                    .delay_max(Duration::from_secs(60))
+                    .build(),
+            )
+            .build();
+
+        let stream = Box::pin(client.stream())
+            .map_err(Error::from)
+            .map_ok(|event| match event {
+                SSE::Connected(_) => String::default(),
+                SSE::Event(ev) => match serde_json::from_str::<MessageEvent>(&ev.data) {
                     Ok(ev) => {
                         if matches!(ev.r#type, MessageEventType::ContentBlockDelta) {
                             if let Some(delta) = ev.delta {
@@ -245,42 +255,12 @@ impl Client {
                         String::default()
                     }
                 },
-                es::SSE::Comment(comment) => {
+                SSE::Comment(comment) => {
                     log::debug!("Comment: {:#?}", comment);
                     String::default()
                 }
-            })
-            .map_err(Error::from)
-        });
+            });
 
-        Ok(mapped_stream)
-    }
-}
-
-impl Requests for Client {
-    fn post_stream(
-        &self,
-        sub_url: String,
-        body: Json,
-    ) -> Result<impl Stream<Item = Result<es::SSE, es::Error>>, es::Error> {
-        let anthropic_version = self.auth.version.as_deref().unwrap_or("2023-06-01");
-
-        let client = es::ClientBuilder::for_url(&(self.api_url.clone() + &sub_url))?
-            .header("anthropic-version", anthropic_version)?
-            .header("content-type", "application/json")?
-            .header("x-api-key", &self.auth.api_key)?
-            .method("POST".into())
-            .body(body.to_string())
-            .reconnect(
-                es::ReconnectOptions::reconnect(true)
-                    .retry_initial(false)
-                    .delay(Duration::from_secs(1))
-                    .backoff_factor(2)
-                    .delay_max(Duration::from_secs(60))
-                    .build(),
-            )
-            .build();
-
-        Ok(crate::requests::tail(&client))
+        Ok(stream)
     }
 }
