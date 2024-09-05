@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+### Changed
+
+- Streamline client implementations
+
 ## 0.2.0
 
 ### Changed
