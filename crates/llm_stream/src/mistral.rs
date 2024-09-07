@@ -6,7 +6,18 @@ const DEFAULT_URL: &str = "https://api.mistral.ai/v1";
 const DEFAULT_MODEL: &str = "mistral-small-latest";
 const DEFAULT_ENV: &str = "MISTRAL_API_KEY";
 
-pub async fn run(prompt: String, mut args: Args) -> Result<()> {
+// From ConversationRole to mistral::Role.
+impl From<ConversationRole> for mistral::Role {
+    fn from(role: ConversationRole) -> Self {
+        match role {
+            ConversationRole::User => mistral::Role::User,
+            ConversationRole::Assistant => mistral::Role::Assistant,
+            ConversationRole::System => mistral::Role::System,
+        }
+    }
+}
+
+pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
     let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
@@ -34,10 +45,14 @@ pub async fn run(prompt: String, mut args: Args) -> Result<()> {
 
     log::info!("client: {:#?}", client);
 
-    let messages = vec![mistral::Message {
-        role: mistral::Role::User,
-        content: prompt,
-    }];
+    let mut messages: Vec<mistral::Message> = Default::default();
+
+    for message in conversation {
+        messages.push(mistral::Message {
+            role: message.role.into(),
+            content: message.content,
+        });
+    }
 
     let mut body = mistral::MessageBody::new(
         args.globals

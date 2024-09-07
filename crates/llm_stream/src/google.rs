@@ -6,7 +6,18 @@ const DEFAULT_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_MODEL: &str = "gemini-1.5-pro";
 const DEFAULT_ENV: &str = "GOOGLE_API_KEY";
 
-pub async fn run(prompt: String, mut args: Args) -> Result<()> {
+// From ConversationRole to google::Role
+impl From<ConversationRole> for google::Role {
+    fn from(role: ConversationRole) -> Self {
+        match role {
+            crate::ConversationRole::User => google::Role::User,
+            crate::ConversationRole::Assistant => google::Role::Model,
+            crate::ConversationRole::System => google::Role::User,
+        }
+    }
+}
+
+pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
     let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
@@ -31,10 +42,29 @@ pub async fn run(prompt: String, mut args: Args) -> Result<()> {
     let client = google::Client::new(auth, url);
     log::info!("client: {:#?}", client);
 
-    let contents = vec![google::Content {
-        parts: vec![google::Part { text: prompt }],
-        role: google::Role::User,
-    }];
+    let mut contents: Vec<google::Content> = Default::default();
+
+    for message in conversation {
+        if message.role == ConversationRole::System {
+            contents.insert(
+                0,
+                google::Content {
+                    parts: vec![google::Part {
+                        text: message.content,
+                    }],
+                    role: message.role.into(),
+                },
+            );
+            continue;
+        }
+
+        contents.push(google::Content {
+            parts: vec![google::Part {
+                text: message.content,
+            }],
+            role: message.role.into(),
+        });
+    }
 
     let mut body = google::MessageBody::new(
         args.globals

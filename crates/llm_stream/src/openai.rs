@@ -6,7 +6,18 @@ const DEFAULT_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL: &str = "gpt-4o";
 const DEFAULT_ENV: &str = "OPENAI_API_KEY";
 
-pub async fn run(prompt: String, mut args: Args) -> Result<()> {
+// From ConversationRole to openai::Role
+impl From<ConversationRole> for openai::Role {
+    fn from(role: ConversationRole) -> Self {
+        match role {
+            ConversationRole::User => openai::Role::User,
+            ConversationRole::Assistant => openai::Role::Assistant,
+            ConversationRole::System => openai::Role::System,
+        }
+    }
+}
+
+pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
     let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
@@ -34,10 +45,14 @@ pub async fn run(prompt: String, mut args: Args) -> Result<()> {
 
     log::info!("client: {:#?}", client);
 
-    let messages = vec![openai::Message {
-        role: openai::Role::User,
-        content: prompt,
-    }];
+    let mut messages: Vec<openai::Message> = Default::default();
+
+    for message in conversation {
+        messages.push(openai::Message {
+            role: message.role.into(),
+            content: message.content,
+        });
+    }
 
     let mut body = openai::MessageBody::new(
         args.globals

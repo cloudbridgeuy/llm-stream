@@ -4,6 +4,7 @@ use std::io::Write;
 
 pub use crate::args::{Api, Args, Globals};
 pub use crate::config::Config;
+pub use crate::conversation::*;
 pub use crate::error::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;

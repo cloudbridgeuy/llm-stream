@@ -103,6 +103,10 @@ pub struct Globals {
     /// Prints the rendered template instead of calling the LLM.
     #[clap(long, default_value = "false")]
     pub print_template: bool,
+
+    /// Conversation to append to the model.
+    #[clap(long, default_value="[]", value_parser = parse_json)]
+    pub conversation: Value,
 }
 
 /// Custom parser function for JSON values

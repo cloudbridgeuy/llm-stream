@@ -4,6 +4,7 @@ use config_file::FromConfigFile;
 mod anthropic;
 mod args;
 mod config;
+mod conversation;
 mod error;
 mod google;
 mod mistral;
@@ -226,11 +227,26 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    let mut conversation: Conversation = vec![ConversationMessage {
+        role: ConversationRole::User,
+        content: prompt.clone(),
+    }];
+
+    if args.globals.system.is_some() {
+        conversation.insert(
+            0,
+            ConversationMessage {
+                role: ConversationRole::System,
+                content: args.globals.system.clone().unwrap(),
+            },
+        )
+    }
+
     match api {
-        Some(Api::OpenAi) => openai::run(prompt, args).await,
-        Some(Api::Anthropic) => anthropic::run(prompt, args).await,
-        Some(Api::Google) => google::run(prompt, args).await,
-        Some(Api::Mistral) => mistral::run(prompt, args).await,
+        Some(Api::OpenAi) => openai::run(conversation, args).await,
+        Some(Api::Anthropic) => anthropic::run(conversation, args).await,
+        Some(Api::Google) => google::run(conversation, args).await,
+        Some(Api::Mistral) => mistral::run(conversation, args).await,
         Some(Api::MistralFim) => mistral_fim::run(prompt, args).await,
         None => Err(Error::ApiNotSpecified),
     }

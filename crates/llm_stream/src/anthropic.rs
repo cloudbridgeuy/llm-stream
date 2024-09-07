@@ -6,7 +6,18 @@ const DEFAULT_URL: &str = "https://api.anthropic.com/v1";
 const DEFAULT_MODEL: &str = "claude-3-5-sonnet-20240620";
 const DEFAULT_ENV: &str = "ANTHROPIC_API_KEY";
 
-pub async fn run(prompt: String, mut args: Args) -> Result<()> {
+// From ConversationRole to anthropic::Role
+impl From<ConversationRole> for anthropic::Role {
+    fn from(role: ConversationRole) -> Self {
+        match role {
+            ConversationRole::User => anthropic::Role::User,
+            ConversationRole::Assistant => anthropic::Role::Assistant,
+            ConversationRole::System => anthropic::Role::User,
+        }
+    }
+}
+
+pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
     let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
@@ -33,10 +44,18 @@ pub async fn run(prompt: String, mut args: Args) -> Result<()> {
 
     log::info!("client: {:#?}", client);
 
-    let messages = vec![anthropic::Message {
-        role: anthropic::Role::User,
-        content: prompt,
-    }];
+    let mut messages: Vec<anthropic::Message> = Default::default();
+
+    for message in conversation {
+        if message.role == ConversationRole::System {
+            continue;
+        }
+
+        messages.push(anthropic::Message {
+            role: message.role.into(),
+            content: message.content,
+        });
+    }
 
     let mut body = anthropic::MessageBody::new(
         args.globals
