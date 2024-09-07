@@ -22,9 +22,6 @@ pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
             ],
         )
         .read()?;
-
-        println!("{$magenta}Creating themes for {[yellow]}{/$}", "bat");
-        cmd("bash", ["lib/bat/assets/create.sh"]).read()?;
     }
 
     let mut arguments = vec!["build", "--verbose"];
