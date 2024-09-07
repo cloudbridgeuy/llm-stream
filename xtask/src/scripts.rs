@@ -12,21 +12,6 @@ pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
             "lib/bat/assets/themes/tokyonight"
         );
 
-        println!("{$magenta}Cleaning lib/bat directory{/$}");
-        cmd("rm", ["-Rf", "lib/bat"]).read()?;
-
-        println!("{$magenta}Cloning {[yellow]}{/$}", "bat");
-        cmd(
-            "git",
-            [
-                "clone",
-                "--recursive",
-                "https://github.com/sharkdp/bat.git",
-                "lib/bat",
-            ],
-        )
-        .read()?;
-
         println!("{$magenta}Copying {[yellow]} theme{/$}", "tokyonight");
         cmd(
             "cp",
