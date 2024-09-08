@@ -6,7 +6,7 @@ const DEFAULT_URL: &str = "https://api.mistral.ai/v1";
 const DEFAULT_MODEL: &str = "codestral-2405";
 const DEFAULT_ENV: &str = "MISTRAL_API_KEY";
 
-pub async fn run(prompt: String, mut args: Args) -> Result<()> {
+pub async fn run(mut args: Args) -> Result<()> {
     let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
@@ -33,6 +33,15 @@ pub async fn run(prompt: String, mut args: Args) -> Result<()> {
     let client = mistral_fim::Client::new(auth, url);
 
     log::info!("client: {:#?}", client);
+
+    let prompt = args
+        .globals
+        .conversation
+        .iter()
+        .filter(|m| m.role == ConversationRole::User)
+        .map(|m| m.content.clone())
+        .collect::<Vec<String>>()
+        .join("\n");
 
     let mut body = mistral_fim::MessageBody::new(
         args.globals

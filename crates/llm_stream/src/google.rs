@@ -17,7 +17,7 @@ impl From<ConversationRole> for google::Role {
     }
 }
 
-pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
+pub async fn run(mut args: Args) -> Result<()> {
     let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
@@ -44,13 +44,13 @@ pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
 
     let mut contents: Vec<google::Content> = Default::default();
 
-    for message in conversation {
+    for message in &args.globals.conversation {
         if message.role == ConversationRole::System {
             contents.insert(
                 0,
                 google::Content {
                     parts: vec![google::Part {
-                        text: message.content,
+                        text: message.content.clone(),
                     }],
                     role: message.role.into(),
                 },
@@ -60,7 +60,7 @@ pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
 
         contents.push(google::Content {
             parts: vec![google::Part {
-                text: message.content,
+                text: message.content.clone(),
             }],
             role: message.role.into(),
         });

@@ -18,7 +18,7 @@ pub struct Globals {
 
     /// The API provider to use.
     #[clap(short, long, value_enum)]
-    pub api: Option<String>,
+    pub api: Option<Api>,
 
     /// The LLM Model to use
     #[clap(short, long)]

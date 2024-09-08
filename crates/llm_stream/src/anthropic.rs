@@ -17,7 +17,7 @@ impl From<ConversationRole> for anthropic::Role {
     }
 }
 
-pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
+pub async fn run(mut args: Args) -> Result<()> {
     let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
@@ -46,14 +46,14 @@ pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
 
     let mut messages: Vec<anthropic::Message> = Default::default();
 
-    for message in conversation {
+    for message in &args.globals.conversation {
         if message.role == ConversationRole::System {
             continue;
         }
 
         messages.push(anthropic::Message {
             role: message.role.into(),
-            content: message.content,
+            content: message.content.clone(),
         });
     }
 

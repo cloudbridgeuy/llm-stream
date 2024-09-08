@@ -17,7 +17,7 @@ impl From<ConversationRole> for openai::Role {
     }
 }
 
-pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
+pub async fn run(mut args: Args) -> Result<()> {
     let key = match args.globals.api_key.take() {
         Some(key) => key,
         None => {
@@ -47,10 +47,10 @@ pub async fn run(conversation: Conversation, mut args: Args) -> Result<()> {
 
     let mut messages: Vec<openai::Message> = Default::default();
 
-    for message in conversation {
+    for message in &args.globals.conversation {
         messages.push(openai::Message {
             role: message.role.into(),
-            content: message.content,
+            content: message.content.clone(),
         });
     }
 
