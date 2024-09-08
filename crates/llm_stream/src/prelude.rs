@@ -4,7 +4,7 @@ use futures::stream::{Stream, TryStreamExt};
 use serde_json::Value;
 use std::io::Write;
 
-pub use crate::args::{Api, Args, Globals};
+pub use crate::args::{Api, Args};
 pub use crate::config::Config;
 pub use crate::conversation::*;
 pub use crate::error::Error;
@@ -18,14 +18,14 @@ const PROMPT_TEMPLATE: &str = "prompt";
 pub async fn handle_stream(
     mut stream: impl Stream<Item = std::result::Result<String, llm_stream::error::Error>>
         + std::marker::Unpin,
-    globals: Globals,
+    args: Args,
 ) -> Result<()> {
     let mut previous_output = String::new();
     let mut accumulated_content_bytes: Vec<u8> = Vec::new();
 
     let is_terminal = atty::is(atty::Stream::Stdout);
 
-    let mut sp = if globals.quiet.is_none() || (globals.quiet == Some(false) && is_terminal) {
+    let mut sp = if args.quiet.is_none() || (args.quiet == Some(false) && is_terminal) {
         Some(spinners::Spinner::new(
             spinners::Spinners::OrangeBluePulse,
             "Loading...".into(),
@@ -34,8 +34,8 @@ pub async fn handle_stream(
         None
     };
 
-    let language = globals.language.unwrap_or("markdown".to_string());
-    let theme = Some(globals.theme.unwrap_or("ansi".to_string()));
+    let language = args.language.unwrap_or("markdown".to_string());
+    let theme = Some(args.theme.unwrap_or("ansi".to_string()));
 
     while let Ok(Some(text)) = stream.try_next().await {
         if is_terminal && sp.is_some() {
@@ -110,31 +110,31 @@ pub fn merge(a: &mut Value, b: Value) {
 pub fn build_args() -> Result<Args> {
     let mut args = Args::parse();
 
-    let prompt = args.globals.prompt.to_string();
-    let stdin = if args.globals.file.is_some() {
-        args.globals.file.clone().unwrap().contents()?
+    let prompt = args.prompt.to_string();
+    let stdin = if args.file.is_some() {
+        args.file.clone().unwrap().contents()?
     } else {
         "".to_string()
     };
 
-    log::info!("info: {:#?}", args.globals);
+    log::info!("info: {:#?}", args);
 
     let home = std::env::var("HOME")?;
-    args.globals.config_dir = args.globals.config_dir.clone().replace('~', &home);
+    args.config_dir = args.config_dir.clone().replace('~', &home);
 
-    if !std::path::Path::new(&args.globals.config_dir).exists() {
-        std::fs::create_dir_all(args.globals.config_dir.clone())?;
+    if !std::path::Path::new(&args.config_dir).exists() {
+        std::fs::create_dir_all(args.config_dir.clone())?;
     }
 
-    let config_dir = args.globals.config_dir.clone();
+    let config_dir = args.config_dir.clone();
 
-    args.globals.config_file = if let Some(config_file) = args.globals.config_file {
+    args.config_file = if let Some(config_file) = args.config_file {
         Some(config_file.clone().replace('~', &home))
     } else {
         Some(config_dir.to_string() + "/config.toml")
     };
 
-    let config_file = args.globals.config_file.clone().unwrap();
+    let config_file = args.config_file.clone().unwrap();
 
     log::info!("config_dir: {}", &config_dir);
     log::info!("config_file: {}", &config_file);
@@ -153,7 +153,7 @@ pub fn build_args() -> Result<Args> {
 
     log::info!("config: {:#?}", config);
 
-    if let Some(preset) = args.globals.preset.clone() {
+    if let Some(preset) = args.preset.clone() {
         let p = config
             .presets
             .unwrap_or_default()
@@ -161,89 +161,89 @@ pub fn build_args() -> Result<Args> {
             .find(|p| p.name == preset);
 
         if let Some(p) = p {
-            if args.globals.api.is_none() {
-                args.globals.api = Some(p.api);
+            if args.api.is_none() {
+                args.api = Some(p.api);
             }
 
-            if args.globals.top_p.is_none() {
-                args.globals.top_p = p.top_p;
+            if args.top_p.is_none() {
+                args.top_p = p.top_p;
             }
-            if args.globals.top_k.is_none() {
-                args.globals.top_k = p.top_k;
+            if args.top_k.is_none() {
+                args.top_k = p.top_k;
             }
-            if args.globals.temperature.is_none() {
-                args.globals.temperature = p.temperature;
+            if args.temperature.is_none() {
+                args.temperature = p.temperature;
             }
-            if args.globals.system.is_none() {
-                args.globals.system = p.system;
+            if args.system.is_none() {
+                args.system = p.system;
             }
-            if args.globals.max_tokens.is_none() {
-                args.globals.max_tokens = p.max_tokens;
+            if args.max_tokens.is_none() {
+                args.max_tokens = p.max_tokens;
             }
-            if args.globals.api_version.is_none() {
-                args.globals.api_version = p.version;
+            if args.api_version.is_none() {
+                args.api_version = p.version;
             }
-            if args.globals.api_env.is_none() {
-                args.globals.api_env = p.env;
+            if args.api_env.is_none() {
+                args.api_env = p.env;
             }
-            if args.globals.api_key.is_none() {
-                args.globals.api_key = p.key;
+            if args.api_key.is_none() {
+                args.api_key = p.key;
             }
-            if args.globals.api_base_url.is_none() {
-                args.globals.api_base_url = p.base_url;
+            if args.api_base_url.is_none() {
+                args.api_base_url = p.base_url;
             }
-            if args.globals.model.is_none() {
-                args.globals.model = p.model;
+            if args.model.is_none() {
+                args.model = p.model;
             }
         }
     };
 
-    if args.globals.top_p.is_none() {
-        args.globals.top_p = config.top_p;
+    if args.top_p.is_none() {
+        args.top_p = config.top_p;
     }
-    if args.globals.top_k.is_none() {
-        args.globals.top_k = config.top_k;
+    if args.top_k.is_none() {
+        args.top_k = config.top_k;
     }
-    if args.globals.temperature.is_none() {
-        args.globals.temperature = config.temperature;
+    if args.temperature.is_none() {
+        args.temperature = config.temperature;
     }
-    if args.globals.system.is_none() {
-        args.globals.system = config.system;
+    if args.system.is_none() {
+        args.system = config.system;
     }
-    if args.globals.max_tokens.is_none() {
-        args.globals.max_tokens = config.max_tokens;
+    if args.max_tokens.is_none() {
+        args.max_tokens = config.max_tokens;
     }
-    if args.globals.api_version.is_none() {
-        args.globals.api_version = config.version;
+    if args.api_version.is_none() {
+        args.api_version = config.version;
     }
-    if args.globals.api_env.is_none() {
-        args.globals.api_env = config.env;
+    if args.api_env.is_none() {
+        args.api_env = config.env;
     }
-    if args.globals.api_key.is_none() {
-        args.globals.api_key = config.key;
+    if args.api_key.is_none() {
+        args.api_key = config.key;
     }
-    if args.globals.api_base_url.is_none() {
-        args.globals.api_base_url = config.base_url;
+    if args.api_base_url.is_none() {
+        args.api_base_url = config.base_url;
     }
-    if args.globals.model.is_none() {
-        args.globals.model = config.model;
+    if args.model.is_none() {
+        args.model = config.model;
     }
-    if args.globals.quiet.is_none() {
-        args.globals.quiet = config.quiet;
+    if args.quiet.is_none() {
+        args.quiet = config.quiet;
     }
-    if args.globals.language.is_none() {
-        args.globals.language = config.language;
+    if args.language.is_none() {
+        args.language = config.language;
     }
-    if args.globals.theme.is_none() {
-        args.globals.theme = config.theme;
+    if args.theme.is_none() {
+        args.theme = config.theme;
     }
-    if args.globals.api.is_none() {
-        args.globals.api = config.api;
+    if args.api.is_none() {
+        args.api = config.api;
     }
 
-    log::info!("globals: {:#?}", args.globals);
+    log::info!("globals: {:#?}", args);
 
-    let prompt: String = if let Some(ref template) = args.globals.template {
+    let prompt: String = if let Some(ref template) = args.template {
         let t = config
             .templates
             .unwrap_or_default()
@@ -258,12 +258,12 @@ pub fn build_args() -> Result<Args> {
 
         log::info!("template: {:#?}", t);
 
-        let system = args.globals.system.clone().unwrap_or_default().to_string();
-        let suffix = args.globals.suffix.clone().unwrap_or_default().to_string();
-        let language = args.globals.language.clone();
+        let system = args.system.clone().unwrap_or_default().to_string();
+        let suffix = args.suffix.clone().unwrap_or_default().to_string();
+        let language = args.language.clone();
 
         let mut default_vars = t.default_vars.unwrap_or_default();
-        let vars = args.globals.vars.take().unwrap_or_default();
+        let vars = args.vars.take().unwrap_or_default();
         merge(&mut default_vars, vars);
 
         let mut value = serde_json::json!({
@@ -284,7 +284,7 @@ pub fn build_args() -> Result<Args> {
 
         if let Some(system) = t.system {
             tera.add_raw_template(SYSTEM_TEMPLATE, &system)?;
-            args.globals.system = Some(tera.render(SYSTEM_TEMPLATE, &context)?);
+            args.system = Some(tera.render(SYSTEM_TEMPLATE, &context)?);
         }
 
         tera.add_raw_template(PROMPT_TEMPLATE, t.template.as_ref())?;
@@ -296,17 +296,17 @@ pub fn build_args() -> Result<Args> {
         prompt
     };
 
-    args.globals.conversation.push(ConversationMessage {
+    args.conversation.push(ConversationMessage {
         role: ConversationRole::User,
         content: prompt.clone(),
     });
 
-    if args.globals.system.is_some() {
-        args.globals.conversation.insert(
+    if args.system.is_some() {
+        args.conversation.insert(
             0,
             ConversationMessage {
                 role: ConversationRole::System,
-                content: args.globals.system.clone().unwrap(),
+                content: args.system.clone().unwrap(),
             },
         )
     };

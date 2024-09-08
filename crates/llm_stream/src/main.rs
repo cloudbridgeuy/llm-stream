@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
 
     let args = build_args()?;
 
-    match args.globals.api {
+    match args.api {
         Some(Api::OpenAi) => openai::run(args).await,
         Some(Api::Anthropic) => anthropic::run(args).await,
         Some(Api::Google) => google::run(args).await,

@@ -18,10 +18,10 @@ impl From<ConversationRole> for anthropic::Role {
 }
 
 pub async fn run(mut args: Args) -> Result<()> {
-    let key = match args.globals.api_key.take() {
+    let key = match args.api_key.take() {
         Some(key) => key,
         None => {
-            let environment_variable = match args.globals.api_env.take() {
+            let environment_variable = match args.api_env.take() {
                 Some(env) => env,
                 None => DEFAULT_ENV.to_string(),
             };
@@ -30,13 +30,13 @@ pub async fn run(mut args: Args) -> Result<()> {
     };
     log::info!("key: {}", key);
 
-    let url = match args.globals.api_base_url.take() {
+    let url = match args.api_base_url.take() {
         Some(url) => url,
         None => DEFAULT_URL.to_string(),
     };
     log::info!("url: {}", url);
 
-    let auth = anthropic::Auth::new(key, args.globals.api_version.clone());
+    let auth = anthropic::Auth::new(key, args.api_version.clone());
 
     log::info!("auth: {:#?}", auth);
 
@@ -46,7 +46,7 @@ pub async fn run(mut args: Args) -> Result<()> {
 
     let mut messages: Vec<anthropic::Message> = Default::default();
 
-    for message in &args.globals.conversation {
+    for message in &args.conversation {
         if message.role == ConversationRole::System {
             continue;
         }
@@ -58,23 +58,22 @@ pub async fn run(mut args: Args) -> Result<()> {
     }
 
     let mut body = anthropic::MessageBody::new(
-        args.globals
-            .model
+        args.model
             .take()
             .unwrap_or(DEFAULT_MODEL.to_string())
             .as_ref(),
         messages,
-        args.globals.max_tokens.unwrap_or(4096),
+        args.max_tokens.unwrap_or(4096),
     );
 
-    body.system = args.globals.system.take();
-    body.temperature = args.globals.temperature;
-    body.top_p = args.globals.top_p;
-    body.top_k = args.globals.top_k;
+    body.system = args.system.take();
+    body.temperature = args.temperature;
+    body.top_p = args.top_p;
+    body.top_k = args.top_k;
 
     log::info!("body: {:#?}", body);
 
     let stream = client.delta(&body)?;
 
-    handle_stream(stream, args.globals).await
+    handle_stream(stream, args).await
 }

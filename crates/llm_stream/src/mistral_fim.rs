@@ -7,10 +7,10 @@ const DEFAULT_MODEL: &str = "codestral-2405";
 const DEFAULT_ENV: &str = "MISTRAL_API_KEY";
 
 pub async fn run(mut args: Args) -> Result<()> {
-    let key = match args.globals.api_key.take() {
+    let key = match args.api_key.take() {
         Some(key) => key,
         None => {
-            let environment_variable = match args.globals.api_env.take() {
+            let environment_variable = match args.api_env.take() {
                 Some(env) => env,
                 None => DEFAULT_ENV.to_string(),
             };
@@ -19,7 +19,7 @@ pub async fn run(mut args: Args) -> Result<()> {
     };
     log::info!("key: {}", key);
 
-    let url = match args.globals.api_base_url.take() {
+    let url = match args.api_base_url.take() {
         Some(url) => url,
         None => DEFAULT_URL.to_string(),
     };
@@ -35,7 +35,6 @@ pub async fn run(mut args: Args) -> Result<()> {
     log::info!("client: {:#?}", client);
 
     let prompt = args
-        .globals
         .conversation
         .iter()
         .filter(|m| m.role == ConversationRole::User)
@@ -44,21 +43,20 @@ pub async fn run(mut args: Args) -> Result<()> {
         .join("\n");
 
     let mut body = mistral_fim::MessageBody::new(
-        args.globals
-            .model
+        args.model
             .take()
             .unwrap_or(DEFAULT_MODEL.to_string())
             .as_ref(),
         prompt,
-        args.globals.suffix.take(),
+        args.suffix.take(),
     );
 
-    body.temperature = args.globals.temperature;
-    body.top_p = args.globals.top_p;
-    if let Some(max_tokens) = args.globals.max_tokens {
+    body.temperature = args.temperature;
+    body.top_p = args.top_p;
+    if let Some(max_tokens) = args.max_tokens {
         body.max_tokens = Some(max_tokens);
     };
-    if let Some(min_tokens) = args.globals.min_tokens {
+    if let Some(min_tokens) = args.min_tokens {
         body.min_tokens = Some(min_tokens);
     };
 
@@ -66,5 +64,5 @@ pub async fn run(mut args: Args) -> Result<()> {
 
     let stream = client.delta(&body)?;
 
-    handle_stream(stream, args.globals).await
+    handle_stream(stream, args).await
 }
