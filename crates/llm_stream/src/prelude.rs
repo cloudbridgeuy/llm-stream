@@ -364,3 +364,80 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
 
     Ok(args)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_args_dont_change_on_empty_config() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let args = Args::default();
+        let config: Config = Config::default();
+
+        let mut expected = args.clone();
+        expected.conversation = vec![ConversationMessage::default()];
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            expected, actual,
+            "merge_args_and_config changed the default values"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_args_override_config() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut args = Args::default();
+        args.api = Some(Api::OpenAi);
+        args.model = Some("gpt-4o".to_string());
+        args.max_tokens = Some(100);
+        args.min_tokens = Some(10);
+        args.api_env = Some("OPENAI_API_KEY".to_string());
+        args.api_version = Some("0.1.0".to_string());
+        args.api_key = Some("123".to_string());
+        args.api_base_url = Some("https://api.openai.com/v1".to_string());
+        args.quiet = Some(true);
+        args.language = Some("markdown".to_string());
+        args.system = Some("Something Awesome".to_string());
+        args.temperature = Some(0.5);
+        args.top_p = Some(0.5);
+        args.top_k = Some(50);
+
+        let mut expected = args.clone();
+        expected.conversation = vec![
+            ConversationMessage {
+                role: ConversationRole::System,
+                content: "Something Awesome".to_string(),
+            },
+            ConversationMessage::default(),
+        ];
+
+        let mut config: Config = Config::default();
+        config.api = Some(Api::Anthropic);
+        config.model = Some("gpt-3".to_string());
+        config.max_tokens = Some(200);
+        config.min_tokens = Some(20);
+        config.env = Some("ANTHROPIC_API_KEY".to_string());
+        config.version = Some("0.2.0".to_string());
+        config.key = Some("456".to_string());
+        config.base_url = Some("https://api.anthropic.com/v1".to_string());
+        config.quiet = Some(false);
+        config.language = Some("html".to_string());
+        config.system = Some("Something Awesome".to_string());
+        config.temperature = Some(0.7);
+        config.top_p = Some(0.7);
+        config.top_k = Some(70);
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            expected, actual,
+            "merge_args_and_config changed the default values"
+        );
+
+        Ok(())
+    }
+}

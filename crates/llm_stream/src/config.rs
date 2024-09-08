@@ -17,6 +17,7 @@ pub struct Preset {
     // Model Configuration
     pub system: Option<String>,
     pub max_tokens: Option<u32>,
+    pub min_tokens: Option<u32>,
     pub version: Option<String>,
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
@@ -73,6 +74,7 @@ pub struct Config {
     // Model Configuration
     pub system: Option<String>,
     pub max_tokens: Option<u32>,
+    pub min_tokens: Option<u32>,
     pub version: Option<String>,
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,

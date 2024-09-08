@@ -85,6 +85,10 @@ pub struct Args {
     #[clap(hide = true)]
     pub stdin: Option<String>,
 
+    /// Suffix prompt
+    #[clap(long)]
+    pub suffix: Option<String>,
+
     /// The API provider to use.
     #[clap(short, long, value_enum)]
     pub api: Option<Api>,
@@ -121,6 +125,10 @@ pub struct Args {
     #[clap(long)]
     pub quiet: Option<bool>,
 
+    /// Language to use for syntax highlight
+    #[clap(long, default_value = "markdown")]
+    pub language: Option<String>,
+
     /// Add a system message to the request.
     #[clap(long)]
     pub system: Option<String>,
@@ -137,6 +145,22 @@ pub struct Args {
     #[clap(long)]
     pub top_k: Option<u32>,
 
+    /// Prompt template to use
+    #[clap(short, long)]
+    pub template: Option<String>,
+
+    /// Additional variables in JSON format
+    #[clap(long, default_value="{}", value_parser = parse_json)]
+    pub vars: Option<Value>,
+
+    /// Conversation to append to the model.
+    #[clap(long, default_value="[]", value_parser = parse_conversation)]
+    pub conversation: Conversation,
+
+    /// Language to use for syntax highlight
+    #[clap(long, default_value = "ansi")]
+    pub theme: Option<String>,
+
     /// Config dir where the configuration and conversation history will be stored.
     #[clap(long, default_value = "~/.config/llm-stream")]
     pub config_dir: String,
@@ -149,31 +173,7 @@ pub struct Args {
     #[clap(short, long)]
     pub preset: Option<String>,
 
-    /// Additional variables in JSON format
-    #[clap(long, default_value="{}", value_parser = parse_json)]
-    pub vars: Option<Value>,
-
-    /// Suffix prompt
-    #[clap(long)]
-    pub suffix: Option<String>,
-
-    /// Language to use for syntax highlight
-    #[clap(long, default_value = "markdown")]
-    pub language: Option<String>,
-
-    /// Language to use for syntax highlight
-    #[clap(long, default_value = "ansi")]
-    pub theme: Option<String>,
-
-    /// Prompt template to use
-    #[clap(short, long)]
-    pub template: Option<String>,
-
     /// Prints the rendered template instead of calling the LLM.
     #[clap(long, default_value = "false")]
     pub print_template: bool,
-
-    /// Conversation to append to the model.
-    #[clap(long, default_value="[]", value_parser = parse_conversation)]
-    pub conversation: Conversation,
 }
