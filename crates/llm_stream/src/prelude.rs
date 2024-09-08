@@ -1,4 +1,3 @@
-use clap::Parser;
 use config_file::FromConfigFile;
 use futures::stream::{Stream, TryStreamExt};
 use serde_json::Value;
@@ -107,9 +106,7 @@ pub fn merge(a: &mut Value, b: Value) {
 /// 2. Environment variable.
 /// 3. Config preset and/or template options.
 /// 4. Config file default options.
-pub fn build_args() -> Result<Args> {
-    let mut args = Args::parse();
-
+pub fn build_args(mut args: Args) -> Result<Args> {
     let prompt = args.prompt.to_string();
     let stdin = if args.file.is_some() {
         args.file.clone().unwrap().contents()?

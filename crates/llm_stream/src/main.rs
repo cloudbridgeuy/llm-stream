@@ -1,3 +1,5 @@
+use clap::Parser;
+
 mod anthropic;
 mod args;
 mod config;
@@ -16,7 +18,7 @@ use crate::prelude::*;
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let args = build_args()?;
+    let args = build_args(Args::parse())?;
 
     match args.api {
         Some(Api::OpenAi) => openai::run(args).await,
