@@ -1,5 +1,4 @@
 use clap::{Parser, ValueEnum};
-use clap_stdin::{FileOrStdin, MaybeStdin};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;
@@ -17,7 +16,7 @@ fn parse_conversation(s: &str) -> std::result::Result<Conversation, serde_json::
     Ok(conversation)
 }
 
-#[derive(ValueEnum, Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(ValueEnum, Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Api {
     OpenAi,
@@ -57,7 +56,7 @@ impl FromStr for Api {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Default, Clone, Debug, Parser, PartialEq)]
 #[command(name = "e", version = "0.1.0")]
 #[command(about = "Interact with LLMs through the terminal")]
 #[command(
@@ -79,12 +78,12 @@ efficiently, ensuring a smooth user experience when interacting with the LLMs."
 )]
 pub struct Args {
     /// The user message prompt. If `-` is provided, `stdin` will be read instead.
-    #[clap(default_value = "")]
-    pub prompt: MaybeStdin<String>,
+    pub prompt: Option<String>,
 
     /// Additional file input to add to the prompt. If `-` is provided, `stdin` will be read
     /// instead.
-    pub file: Option<FileOrStdin<String>>,
+    #[clap(hide = true)]
+    pub stdin: Option<String>,
 
     /// The API provider to use.
     #[clap(short, long, value_enum)]

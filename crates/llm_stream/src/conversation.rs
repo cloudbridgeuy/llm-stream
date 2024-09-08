@@ -15,7 +15,7 @@ pub enum ConversationRole {
 /// LLM-Stream Convversation message.
 ///
 /// THis struct should be converted to the appropriate API struct for each implementation.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConversationMessage {
     pub role: ConversationRole,
     pub content: String,

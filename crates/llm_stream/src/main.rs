@@ -18,7 +18,17 @@ use crate::prelude::*;
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let args = build_args(Args::parse())?;
+    let args = parse_prompt(Args::parse())?;
+
+    log::info!("args: {:#?}", args);
+
+    let (args, config) = build_config(args)?;
+
+    log::info!("config: {:#?}", config);
+
+    let args = merge_args_and_config(args, config)?;
+
+    log::info!("merged args: {:#?}", args);
 
     match args.api {
         Some(Api::OpenAi) => openai::run(args).await,

@@ -1,7 +1,7 @@
 use config_file::FromConfigFile;
 use futures::stream::{Stream, TryStreamExt};
 use serde_json::Value;
-use std::io::Write;
+use std::io::{BufRead, IsTerminal, Write};
 
 pub use crate::args::{Api, Args};
 pub use crate::config::Config;
@@ -99,23 +99,8 @@ pub fn merge(a: &mut Value, b: Value) {
     *a = b;
 }
 
-/// Builds the arguments struct based on a combination of the following inputs,
-/// in this order.
-///
-/// 1. CLI options/Environment variables.
-/// 2. Environment variable.
-/// 3. Config preset and/or template options.
-/// 4. Config file default options.
-pub fn build_args(mut args: Args) -> Result<Args> {
-    let prompt = args.prompt.to_string();
-    let stdin = if args.file.is_some() {
-        args.file.clone().unwrap().contents()?
-    } else {
-        "".to_string()
-    };
-
-    log::info!("info: {:#?}", args);
-
+/// Reads the configuration file. If it or the config directory doesn't exist, they'll be created.
+pub fn build_config(mut args: Args) -> Result<(Args, Config)> {
     let home = std::env::var("HOME")?;
     args.config_dir = args.config_dir.clone().replace('~', &home);
 
@@ -148,7 +133,76 @@ pub fn build_args(mut args: Args) -> Result<Args> {
         Config::from_config_file(&config_file)?
     };
 
-    log::info!("config: {:#?}", config);
+    Ok((args, config))
+}
+
+/// Handles the command prompt, adding support for reading from `stdin`, an argument, a file, or
+/// a tuple of those three.
+///
+/// This function handles the following situations:
+///
+/// 1. Calling the binary with no arguments.
+///
+/// ```bash
+/// llm-stream
+/// ```
+///
+/// This will render in an empty value for both `prompt` and `stdin`.
+///
+/// 2. Calling the binary with `stdin` input.
+///
+/// ```bash
+/// echo -n "Something" | llm-stream
+/// ```
+///
+/// This will render in `prompt` to `Something` and `stdin` to be empty.
+///
+/// 3. Calling the binary with an argument.
+///
+/// ```bash
+/// llm-stream "Something"
+/// ```
+///
+/// This will render in `prompt` to `Something` and `stdin` to be empty.
+///
+/// 4. Calling the binary with an argument and `stdin` input.
+///
+/// ```bash
+/// echo -n "Awesome" | llm-stream "Something"
+/// ```
+///
+/// This will render `prompt` to be `Something, and `stdin` to be `Awesome`.
+pub fn parse_prompt(mut args: Args) -> Result<Args> {
+    let stdin = std::io::stdin();
+
+    args.stdin = Some(if stdin.is_terminal() {
+        "".to_string()
+    } else {
+        std::io::stdin()
+            .lock()
+            .lines()
+            .collect::<std::result::Result<Vec<String>, std::io::Error>>()?
+            .join("\n")
+    });
+
+    if args.prompt.is_none() {
+        args.prompt = args.stdin.clone();
+        args.stdin = None;
+    }
+
+    Ok(args)
+}
+
+/// Builds the arguments struct based on a combination of the following inputs,
+/// in this order.
+///
+/// 1. CLI options/Environment variables.
+/// 2. Environment variable.
+/// 3. Config preset and/or template options.
+/// 4. Config file default options.
+pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
+    let prompt = args.prompt.clone();
+    let stdin = args.stdin.clone();
 
     if let Some(preset) = args.preset.clone() {
         let p = config
@@ -287,10 +341,10 @@ pub fn build_args(mut args: Args) -> Result<Args> {
         tera.add_raw_template(PROMPT_TEMPLATE, t.template.as_ref())?;
 
         tera.render(PROMPT_TEMPLATE, &context)?
-    } else if !stdin.is_empty() {
-        format!("{}\n{}", stdin, prompt)
+    } else if !stdin.is_none() {
+        format!("{}\n{}", &stdin.unwrap(), &prompt.unwrap_or_default())
     } else {
-        prompt
+        prompt.unwrap_or_default()
     };
 
     args.conversation.push(ConversationMessage {
