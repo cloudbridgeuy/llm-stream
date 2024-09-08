@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// This enum should be converted to the appropriate API Role for each implementation.
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum ConversationRole {
     #[default]
     User,

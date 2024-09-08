@@ -1,3 +1,4 @@
+use clap::Parser;
 use futures::stream::{Stream, TryStreamExt};
 use serde_json::Value;
 use std::io::Write;
@@ -9,6 +10,7 @@ pub use crate::error::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Handles the stream of text from the LLM and prints it to the terminal.
 pub async fn handle_stream(
     mut stream: impl Stream<Item = std::result::Result<String, llm_stream::error::Error>>
         + std::marker::Unpin,
@@ -75,7 +77,7 @@ pub async fn handle_stream(
     Ok(())
 }
 
-// Merges two JSON objects defined as `serde_json::Value`.
+/// Merges two JSON objects defined as `serde_json::Value`.
 pub fn merge(a: &mut Value, b: Value) {
     if let Value::Object(a) = a {
         if let Value::Object(b) = b {
@@ -92,4 +94,17 @@ pub fn merge(a: &mut Value, b: Value) {
     }
 
     *a = b;
+}
+
+/// Builds the arguments struct based on a combination of the following inputs,
+/// in this order.
+///
+/// 1. CLI options/Environment variables.
+/// 2. Environment variable.
+/// 3. Config preset and/or template options.
+/// 4. Config file default options.
+pub fn build_args() -> Result<Args> {
+    let mut args = Args::parse();
+
+    Ok(args)
 }

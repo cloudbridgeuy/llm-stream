@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use clap_stdin::MaybeStdin;
+use clap_stdin::{FileOrStdin, MaybeStdin};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;
@@ -8,13 +8,13 @@ use crate::prelude::*;
 
 #[derive(Debug, clap::Args)]
 pub struct Globals {
-    /// Hidden prompt to support prompting from stdin and as an argument
-    #[clap(default_value = "-", hide = true)]
-    pub stdin: MaybeStdin<String>,
-
-    /// The user message prompt
-    #[clap(default_value = "", hide = true)]
+    /// The user message prompt. If `-` is provided, `stdin` will be read instead.
+    #[clap(default_value = "")]
     pub prompt: MaybeStdin<String>,
+
+    /// Additional file input to add to the prompt. If `-` is provided, `stdin` will be read
+    /// instead.
+    pub file: Option<FileOrStdin<String>>,
 
     /// The API provider to use.
     #[clap(short, long, value_enum)]
@@ -105,13 +105,19 @@ pub struct Globals {
     pub print_template: bool,
 
     /// Conversation to append to the model.
-    #[clap(long, default_value="[]", value_parser = parse_json)]
-    pub conversation: Value,
+    #[clap(long, default_value="[]", value_parser = parse_conversation)]
+    pub conversation: Conversation,
 }
 
 /// Custom parser function for JSON values
 fn parse_json(s: &str) -> std::result::Result<Value, serde_json::Error> {
     serde_json::from_str(s)
+}
+
+/// Custom parser function to serialize conversations in JSON formats to the Conversation struct.
+fn parse_conversation(s: &str) -> std::result::Result<Conversation, serde_json::Error> {
+    let conversation: Conversation = serde_json::from_str(s)?;
+    Ok(conversation)
 }
 
 #[derive(ValueEnum, Debug, Default, Clone, Copy, Serialize, Deserialize)]

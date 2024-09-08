@@ -31,13 +31,11 @@ async fn main() -> Result<()> {
     };
 
     let mut prompt = args.globals.prompt.to_string();
-    let mut stdin = args.globals.stdin.to_string();
-
-    // Turn them around if there's nothing coming from `stdin`.
-    if prompt.is_empty() && !stdin.is_empty() {
-        stdin = args.globals.prompt.to_string();
-        prompt = args.globals.stdin.to_string();
-    }
+    let mut stdin = if args.globals.file.is_some() {
+        args.globals.file.clone().unwrap().contents()?
+    } else {
+        "".to_string()
+    };
 
     log::info!("info: {:#?}", args.globals);
 
@@ -227,10 +225,12 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut conversation: Conversation = vec![ConversationMessage {
+    let mut conversation = args.globals.conversation.clone();
+
+    conversation.push(ConversationMessage {
         role: ConversationRole::User,
         content: prompt.clone(),
-    }];
+    });
 
     if args.globals.system.is_some() {
         conversation.insert(

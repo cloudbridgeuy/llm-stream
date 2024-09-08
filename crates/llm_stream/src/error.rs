@@ -24,6 +24,8 @@ pub enum Error {
     Tera(#[from] tera::Error),
     #[error("toml error")]
     Toml(#[from] toml::ser::Error),
+    #[error("file or stdin error")]
+    Stdin(#[from] clap_stdin::StdinError),
 }
 
 pub(crate) fn format_error(
