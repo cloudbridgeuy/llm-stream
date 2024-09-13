@@ -94,6 +94,7 @@ pub fn merge(a: &mut Value, b: Value) {
 
             return;
         }
+        return;
     }
 
     *a = b;
@@ -204,6 +205,68 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
     let prompt = args.prompt.clone();
     let stdin = args.stdin.clone();
 
+    let prompt: String = if let Some(ref template) = args.template {
+        let t = config
+            .templates
+            .unwrap_or_default()
+            .into_iter()
+            .find(|t| t.name == *template);
+
+        if t.is_none() {
+            return Err(Error::TemplateNotFound);
+        }
+
+        let t = t.unwrap();
+
+        let suffix = args.suffix.clone().unwrap_or_default().to_string();
+        let language = args.language.clone();
+
+        let mut default_vars =
+            if t.default_vars.is_none() || t.default_vars.as_ref().unwrap().is_null() {
+                serde_json::json!("{}")
+            } else {
+                t.default_vars.unwrap()
+            };
+
+        let vars = if args.vars.is_none() || args.vars.as_ref().unwrap().is_null() {
+            serde_json::json!("{}")
+        } else {
+            args.vars.take().unwrap()
+        };
+
+        merge(&mut default_vars, vars);
+
+        let mut value = serde_json::json!({
+            "prompt": prompt,
+            "stdin": stdin,
+            "suffix": suffix,
+            "language": language,
+        });
+
+        merge(&mut value, default_vars);
+
+        let context = tera::Context::from_value(value)?;
+
+        log::info!("context: {:#?}", &context);
+
+        let mut tera = tera::Tera::default();
+
+        if args.system.is_none() {
+            if let Some(system) = t.system {
+                tera.add_raw_template(SYSTEM_TEMPLATE, &system)?;
+                args.system = Some(tera.render(SYSTEM_TEMPLATE, &context)?);
+            }
+        }
+
+        tera.add_raw_template(PROMPT_TEMPLATE, t.template.as_ref())?;
+
+        tera.render(PROMPT_TEMPLATE, &context)?
+    } else if !stdin.is_none() {
+        format!("{}\n{}", &stdin.unwrap(), &prompt.unwrap_or_default())
+    } else {
+        prompt.unwrap_or_default()
+    };
+
     if let Some(preset) = args.preset.clone() {
         let p = config
             .presets
@@ -292,61 +355,6 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
         args.api = config.api;
     }
 
-    log::info!("globals: {:#?}", args);
-
-    let prompt: String = if let Some(ref template) = args.template {
-        let t = config
-            .templates
-            .unwrap_or_default()
-            .into_iter()
-            .find(|t| t.name == *template);
-
-        if t.is_none() {
-            return Err(Error::TemplateNotFound);
-        }
-
-        let t = t.unwrap();
-
-        log::info!("template: {:#?}", t);
-
-        let system = args.system.clone().unwrap_or_default().to_string();
-        let suffix = args.suffix.clone().unwrap_or_default().to_string();
-        let language = args.language.clone();
-
-        let mut default_vars = t.default_vars.unwrap_or_default();
-        let vars = args.vars.take().unwrap_or_default();
-        merge(&mut default_vars, vars);
-
-        let mut value = serde_json::json!({
-            "prompt": prompt,
-            "system": system,
-            "stdin": stdin,
-            "suffix": suffix,
-            "language": language,
-        });
-
-        merge(&mut value, default_vars);
-
-        let context = tera::Context::from_value(value)?;
-
-        log::info!("context: {:#?}", context);
-
-        let mut tera = tera::Tera::default();
-
-        if let Some(system) = t.system {
-            tera.add_raw_template(SYSTEM_TEMPLATE, &system)?;
-            args.system = Some(tera.render(SYSTEM_TEMPLATE, &context)?);
-        }
-
-        tera.add_raw_template(PROMPT_TEMPLATE, t.template.as_ref())?;
-
-        tera.render(PROMPT_TEMPLATE, &context)?
-    } else if !stdin.is_none() {
-        format!("{}\n{}", &stdin.unwrap(), &prompt.unwrap_or_default())
-    } else {
-        prompt.unwrap_or_default()
-    };
-
     args.conversation.push(ConversationMessage {
         role: ConversationRole::User,
         content: prompt.clone(),
@@ -368,6 +376,7 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{Preset, Template};
 
     #[test]
     fn test_args_dont_change_on_empty_config() -> std::result::Result<(), Box<dyn std::error::Error>>
@@ -436,6 +445,197 @@ mod tests {
         assert_eq!(
             expected, actual,
             "merge_args_and_config changed the default values"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_system_arg_over_config_preset() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let system = "param system";
+        let preset_name = "preset_name";
+
+        let mut args = Args::default();
+        args.system = Some(system.to_string());
+        args.preset = Some(preset_name.to_string());
+
+        let mut expected = args.clone();
+        expected.conversation = vec![
+            ConversationMessage {
+                role: ConversationRole::System,
+                content: system.to_string(),
+            },
+            ConversationMessage::default(),
+        ];
+
+        let mut config: Config = Config::default();
+        config.presets = Some(vec![Preset {
+            name: preset_name.to_string(),
+            system: Some("preset system".to_string()),
+            ..Default::default()
+        }]);
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            expected.conversation, actual.conversation,
+            "The system arg should overwrite the preset system"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_prest_system_over_config_system() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let system = "preset system";
+        let config_system = "config system";
+        let preset_name = "preset_name";
+
+        let mut args = Args::default();
+        args.preset = Some(preset_name.to_string());
+
+        let mut expected = args.clone();
+        expected.conversation = vec![
+            ConversationMessage {
+                role: ConversationRole::System,
+                content: system.to_string(),
+            },
+            ConversationMessage::default(),
+        ];
+
+        let mut config: Config = Config::default();
+        config.system = Some(config_system.to_string());
+        config.presets = Some(vec![Preset {
+            name: preset_name.to_string(),
+            system: Some(system.to_string()),
+            ..Default::default()
+        }]);
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            expected.conversation, actual.conversation,
+            "The system arg should overwrite the preset system"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_system_arg_over_system_template() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let system = "param system";
+        let template_name = "template_name";
+
+        let mut args = Args::default();
+        args.system = Some(system.to_string());
+        args.template = Some(template_name.to_string());
+
+        let mut expected = args.clone();
+        expected.conversation = vec![
+            ConversationMessage {
+                role: ConversationRole::System,
+                content: system.to_string(),
+            },
+            ConversationMessage::default(),
+        ];
+
+        let mut config: Config = Config::default();
+        config.templates = Some(vec![Template {
+            name: template_name.to_string(),
+            description: Some("test".to_string()),
+            system: Some("template system".to_string()),
+            template: "".to_string(),
+            ..Default::default()
+        }]);
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            expected.conversation, actual.conversation,
+            "The system arg should overwrite the template system"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_system_template_over_system_preset(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let system = "template system";
+        let template_name = "template_name";
+        let preset_name = "preset_name";
+
+        let mut args = Args::default();
+        args.template = Some(template_name.to_string());
+        args.preset = Some(preset_name.to_string());
+
+        let mut expected = args.clone();
+        expected.conversation = vec![
+            ConversationMessage {
+                role: ConversationRole::System,
+                content: system.to_string(),
+            },
+            ConversationMessage::default(),
+        ];
+
+        let mut config: Config = Config::default();
+        config.templates = Some(vec![Template {
+            name: template_name.to_string(),
+            description: Some("test".to_string()),
+            system: Some(system.to_string()),
+            template: "".to_string(),
+            ..Default::default()
+        }]);
+        config.presets = Some(vec![Preset {
+            name: preset_name.to_string(),
+            system: Some("preset system".to_string()),
+            ..Default::default()
+        }]);
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            expected.conversation, actual.conversation,
+            "The template system should overwrite the preset system"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_template_system_should_not_be_duplicated(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let system = "template system";
+        let template_name = "template_name";
+
+        let mut args = Args::default();
+        args.template = Some(template_name.to_string());
+
+        let mut expected = args.clone();
+        expected.conversation = vec![
+            ConversationMessage {
+                role: ConversationRole::System,
+                content: system.to_string(),
+            },
+            ConversationMessage::default(),
+        ];
+
+        let mut config: Config = Config::default();
+        config.templates = Some(vec![Template {
+            name: template_name.to_string(),
+            description: Some("test".to_string()),
+            system: Some(system.to_string()),
+            template: "".to_string(),
+            ..Default::default()
+        }]);
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            expected.conversation, actual.conversation,
+            "The system arg should overwrite the template system"
         );
 
         Ok(())

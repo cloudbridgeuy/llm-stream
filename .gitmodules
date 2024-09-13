@@ -1,3 +1,6 @@
 [submodule "lib/bat"]
 	path = lib/bat
 	url = https://github.com/sharkdp/bat.git
+[submodule "lib/see"]
+	path = lib/see
+	url = git@github.com:guilhermeprokisch/see.git
