@@ -361,13 +361,24 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
     });
 
     if args.system.is_some() {
-        args.conversation.insert(
-            0,
-            ConversationMessage {
-                role: ConversationRole::System,
-                content: args.system.clone().unwrap(),
-            },
-        )
+        if args.conversation.get(0).is_some()
+            && args.conversation.get(0).unwrap().role == ConversationRole::System
+        {
+            // Replace index 0 of args.conversation with a new ConversationMessage
+            args.conversation[0].content = format!(
+                "{}\n{}",
+                args.conversation[0].content,
+                args.system.clone().unwrap()
+            );
+        } else {
+            args.conversation.insert(
+                0,
+                ConversationMessage {
+                    role: ConversationRole::System,
+                    content: args.system.clone().unwrap(),
+                },
+            )
+        }
     };
 
     Ok(args)
@@ -636,6 +647,43 @@ mod tests {
         assert_eq!(
             expected.conversation, actual.conversation,
             "The system arg should overwrite the template system"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_resulting_conversation_has_single_system_message_at_index_zero(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let system_option = "system option";
+        let system_conversation = "system conversation";
+        let mut args = Args::default();
+        args.system = Some(system_option.to_string());
+
+        let mut expected = args.clone();
+        expected.conversation = vec![
+            ConversationMessage {
+                role: ConversationRole::System,
+                content: format!(
+                    "{}\n{}",
+                    system_conversation.to_string(),
+                    system_option.to_string(),
+                ),
+            },
+            ConversationMessage::default(),
+        ];
+
+        args.conversation = vec![ConversationMessage {
+            role: ConversationRole::System,
+            content: system_conversation.to_string(),
+        }];
+
+        let config: Config = Config::default();
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            expected.conversation, actual.conversation,
+            "There should be a single `system` message"
         );
 
         Ok(())

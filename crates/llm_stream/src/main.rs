@@ -44,6 +44,8 @@ async fn main() -> Result<()> {
 
     log::info!("merged args: {:#?}", args);
 
+    println!("{:#?}", &args.conversation);
+
     match args.api {
         Some(Api::OpenAi) => openai::run(args).await,
         Some(Api::Anthropic) => anthropic::run(args).await,
