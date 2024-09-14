@@ -173,10 +173,6 @@ pub struct Args {
     #[clap(short, long)]
     pub preset: Option<String>,
 
-    /// Prints the rendered template instead of calling the LLM.
-    #[clap(long, default_value = "false")]
-    pub print_template: bool,
-
     /// Prints the configuration directories
     #[clap(long, default_value = "false")]
     pub dir: bool,
@@ -184,4 +180,12 @@ pub struct Args {
     /// Prints the configuration file in use.
     #[clap(long, default_value = "false")]
     pub config: bool,
+
+    /// Prints the conversation to be sent to the LLM.
+    #[clap(long, default_value = "false")]
+    pub print_conversation: bool,
+
+    /// Don't call the LLM.
+    #[clap(long, default_value = "false")]
+    pub dry_run: bool,
 }

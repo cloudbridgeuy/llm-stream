@@ -44,7 +44,15 @@ async fn main() -> Result<()> {
 
     log::info!("merged args: {:#?}", args);
 
-    println!("{:#?}", &args.conversation);
+    if args.print_conversation {
+        let json = serde_json::to_string_pretty(&args.conversation)?;
+
+        println!("{}", &json);
+    }
+
+    if args.dry_run {
+        return Ok(());
+    }
 
     match args.api {
         Some(Api::OpenAi) => openai::run(args).await,

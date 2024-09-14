@@ -23,7 +23,9 @@ pub enum Error {
     #[error("tera error")]
     Tera(#[from] tera::Error),
     #[error("toml error")]
-    Toml(#[from] toml::ser::Error),
+    TOML(#[from] toml::ser::Error),
+    #[error("json error")]
+    JSON(#[from] serde_json::Error),
     #[error("file or stdin error")]
     Stdin(#[from] clap_stdin::StdinError),
 }

@@ -12,6 +12,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 const SYSTEM_TEMPLATE: &str = "system";
 const PROMPT_TEMPLATE: &str = "prompt";
+const CONTENT_TEMPLATE: &str = "template";
 
 /// Handles the stream of text from the LLM and prints it to the terminal.
 pub async fn handle_stream(
@@ -202,10 +203,7 @@ pub fn parse_prompt(mut args: Args) -> Result<Args> {
 /// 3. Config preset and/or template options.
 /// 4. Config file default options.
 pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
-    let prompt = args.prompt.clone();
-    let stdin = args.stdin.clone();
-
-    let prompt: String = if let Some(ref template) = args.template {
+    if let Some(ref template) = args.template {
         let t = config
             .templates
             .unwrap_or_default()
@@ -217,9 +215,6 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
         }
 
         let t = t.unwrap();
-
-        let suffix = args.suffix.clone().unwrap_or_default().to_string();
-        let language = args.language.clone();
 
         let mut default_vars =
             if t.default_vars.is_none() || t.default_vars.as_ref().unwrap().is_null() {
@@ -237,10 +232,10 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
         merge(&mut default_vars, vars);
 
         let mut value = serde_json::json!({
-            "prompt": prompt,
-            "stdin": stdin,
-            "suffix": suffix,
-            "language": language,
+            "prompt": args.prompt.clone().unwrap_or_default(),
+            "stdin": args.stdin.clone().unwrap_or_default(),
+            "suffix": args.suffix.clone().unwrap_or_default().to_string(),
+            "language": args.language.clone(),
         });
 
         merge(&mut value, default_vars);
@@ -258,13 +253,42 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
             }
         }
 
-        tera.add_raw_template(PROMPT_TEMPLATE, t.template.as_ref())?;
+        if let Some(template) = t.template {
+            tera.add_raw_template(PROMPT_TEMPLATE, &template)?;
 
-        tera.render(PROMPT_TEMPLATE, &context)?
-    } else if !stdin.is_none() {
-        format!("{}\n{}", &stdin.unwrap(), &prompt.unwrap_or_default())
-    } else {
-        prompt.unwrap_or_default()
+            args.prompt = Some(tera.render(PROMPT_TEMPLATE, &context)?);
+        }
+
+        if let Some(conversation) = t.conversation {
+            for message in conversation {
+                tera.add_raw_template(CONTENT_TEMPLATE, &message.content)?;
+
+                if message.role == ConversationRole::System && args.conversation.len() > 0 {
+                    if args.conversation.first().unwrap().role != ConversationRole::System {
+                        args.conversation.insert(
+                            0,
+                            ConversationMessage {
+                                role: ConversationRole::System,
+                                content: tera.render(CONTENT_TEMPLATE, &context)?,
+                            },
+                        );
+                    } else {
+                        continue;
+                    }
+                } else {
+                    args.conversation.push(ConversationMessage {
+                        role: message.role.clone(),
+                        content: tera.render(CONTENT_TEMPLATE, &context)?,
+                    });
+                }
+            }
+        }
+    } else if !args.stdin.is_none() {
+        args.prompt = Some(format!(
+            "{}\n{}",
+            args.stdin.clone().unwrap(),
+            args.prompt.clone().unwrap_or_default()
+        ));
     };
 
     if let Some(preset) = args.preset.clone() {
@@ -288,8 +312,16 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
             if args.temperature.is_none() {
                 args.temperature = p.temperature;
             }
-            if args.system.is_none() {
-                args.system = p.system;
+            if args.conversation.len() == 0
+                || args.conversation.first().unwrap().role != ConversationRole::System
+            {
+                args.conversation.insert(
+                    0,
+                    ConversationMessage {
+                        role: ConversationRole::System,
+                        content: p.system.clone().unwrap_or_default(),
+                    },
+                );
             }
             if args.max_tokens.is_none() {
                 args.max_tokens = p.max_tokens;
@@ -321,8 +353,16 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
     if args.temperature.is_none() {
         args.temperature = config.temperature;
     }
-    if args.system.is_none() {
-        args.system = config.system;
+    if args.conversation.len() == 0
+        || args.conversation.first().unwrap().role != ConversationRole::System
+    {
+        args.conversation.insert(
+            0,
+            ConversationMessage {
+                role: ConversationRole::System,
+                content: config.system.clone().unwrap_or_default(),
+            },
+        );
     }
     if args.max_tokens.is_none() {
         args.max_tokens = config.max_tokens;
@@ -357,19 +397,14 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
 
     args.conversation.push(ConversationMessage {
         role: ConversationRole::User,
-        content: prompt.clone(),
+        content: args.prompt.clone().unwrap_or_default(),
     });
 
     if args.system.is_some() {
-        if args.conversation.get(0).is_some()
-            && args.conversation.get(0).unwrap().role == ConversationRole::System
+        if args.conversation.len() > 1
+            && args.conversation.first().unwrap().role == ConversationRole::System
         {
-            // Replace index 0 of args.conversation with a new ConversationMessage
-            args.conversation[0].content = format!(
-                "{}\n{}",
-                args.conversation[0].content,
-                args.system.clone().unwrap()
-            );
+            args.conversation[0].content = args.system.clone().unwrap();
         } else {
             args.conversation.insert(
                 0,
@@ -377,7 +412,7 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
                     role: ConversationRole::System,
                     content: args.system.clone().unwrap(),
                 },
-            )
+            );
         }
     };
 
@@ -557,7 +592,7 @@ mod tests {
             name: template_name.to_string(),
             description: Some("test".to_string()),
             system: Some("template system".to_string()),
-            template: "".to_string(),
+            template: Some("".to_string()),
             ..Default::default()
         }]);
 
@@ -596,7 +631,7 @@ mod tests {
             name: template_name.to_string(),
             description: Some("test".to_string()),
             system: Some(system.to_string()),
-            template: "".to_string(),
+            template: Some("".to_string()),
             ..Default::default()
         }]);
         config.presets = Some(vec![Preset {
@@ -638,7 +673,7 @@ mod tests {
             name: template_name.to_string(),
             description: Some("test".to_string()),
             system: Some(system.to_string()),
-            template: "".to_string(),
+            template: Some("".to_string()),
             ..Default::default()
         }]);
 
@@ -664,11 +699,7 @@ mod tests {
         expected.conversation = vec![
             ConversationMessage {
                 role: ConversationRole::System,
-                content: format!(
-                    "{}\n{}",
-                    system_conversation.to_string(),
-                    system_option.to_string(),
-                ),
+                content: system_option.to_string(),
             },
             ConversationMessage::default(),
         ];

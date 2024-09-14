@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::conversation::ConversationMessage;
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Preset {
     pub name: String,
@@ -38,9 +40,10 @@ pub enum Role {
 pub struct Template {
     pub name: String,
     pub description: Option<String>,
-    pub template: String,
+    pub template: Option<String>,
     pub default_vars: Option<Value>,
     pub system: Option<String>,
+    pub conversation: Option<Vec<ConversationMessage>>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
