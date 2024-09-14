@@ -26,6 +26,20 @@ async fn main() -> Result<()> {
 
     log::info!("config: {:#?}", config);
 
+    if args.config {
+        if let Some(config_file) = args.config_file {
+            println!("{}", config_file);
+        } else {
+            println!("{}/config.toml", args.config_dir);
+        }
+        return Ok(());
+    }
+
+    if args.dir {
+        println!("{}", args.config_dir);
+        return Ok(());
+    }
+
     let args = merge_args_and_config(args, config)?;
 
     log::info!("merged args: {:#?}", args);

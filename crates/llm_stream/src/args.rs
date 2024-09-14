@@ -176,4 +176,12 @@ pub struct Args {
     /// Prints the rendered template instead of calling the LLM.
     #[clap(long, default_value = "false")]
     pub print_template: bool,
+
+    /// Prints the configuration directories
+    #[clap(long, default_value = "false")]
+    pub dir: bool,
+
+    /// Prints the configuration file in use.
+    #[clap(long, default_value = "false")]
+    pub config: bool,
 }
