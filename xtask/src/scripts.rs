@@ -82,7 +82,7 @@ pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
     println!("{$magenta}Creating changelog entry{/$}");
     let changelog = String::from_utf8(
         cmd(
-            "e",
+            "llm-stream",
             [
                 "--preset",
                 "sonnet",
