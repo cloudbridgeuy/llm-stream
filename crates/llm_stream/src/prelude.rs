@@ -37,48 +37,72 @@ pub async fn handle_stream(
     let language = args.language.unwrap_or("markdown".to_string());
     let theme = Some(args.theme.unwrap_or("ansi".to_string()));
 
-    while let Ok(Some(text)) = stream.try_next().await {
-        if is_terminal && sp.is_some() {
-            // TODO: Find a better way to clean the spinner from the terminal.
-            sp.take().unwrap().stop();
-            std::io::stdout().flush()?;
-            crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-            print!("                      ");
-            crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-        }
+    loop {
+        let result = stream.try_next().await;
 
-        if !is_terminal {
-            // If not a terminal, print each instance of `text` directly to `stdout`
-            print!("{}", text);
-            std::io::stdout().flush()?;
-            continue;
-        }
+        match result {
+            Ok(Some(text)) => {
+                if is_terminal && sp.is_some() {
+                    // TODO: Find a better way to clean the spinner from the terminal.
+                    sp.take().unwrap().stop();
+                    std::io::stdout().flush()?;
+                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                    print!("                      ");
+                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                }
 
-        accumulated_content_bytes.extend_from_slice(text.as_bytes());
+                if !is_terminal {
+                    // If not a terminal, print each instance of `text` directly to `stdout`
+                    print!("{}", text);
+                    std::io::stdout().flush()?;
+                    continue;
+                }
 
-        let output = crate::printer::CustomPrinter::new(&language, theme.as_deref())?
-            .input_from_bytes(&accumulated_content_bytes)
-            .print()?;
+                accumulated_content_bytes.extend_from_slice(text.as_bytes());
 
-        let unprinted_lines = output
-            .lines()
-            .skip(if previous_output.lines().count() == 0 {
-                0
-            } else {
-                previous_output.lines().count() - 1
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+                let output = crate::printer::CustomPrinter::new(&language, theme.as_deref())?
+                    .input_from_bytes(&accumulated_content_bytes)
+                    .print()?;
 
-        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-        print!("{unprinted_lines}");
-        std::io::stdout().flush()?;
+                let unprinted_lines = output
+                    .lines()
+                    .skip(if previous_output.lines().count() == 0 {
+                        0
+                    } else {
+                        previous_output.lines().count() - 1
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
 
-        // Update the previous output
-        previous_output = output;
+                crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                print!("{unprinted_lines}");
+                std::io::stdout().flush()?;
+
+                // Update the previous output
+                previous_output = output;
+            }
+            Ok(None) => break,
+            Err(llm_stream::error::Error::EventsourceClient(
+                llm_stream::error::EventsourceError::Eof,
+            )) => break,
+            Err(e) => {
+                if is_terminal && sp.is_some() {
+                    // TODO: Find a better way to clean the spinner from the terminal.
+                    sp.take().unwrap().stop();
+                    std::io::stdout().flush()?;
+                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                    print!("                      ");
+                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                }
+                return Err(Error::from(e));
+            }
+        };
     }
 
     Ok(())
+
+    // while let Ok(Some(text)) = stream.try_next().await {
+    // }
 }
 
 /// Merges two JSON objects defined as `serde_json::Value`.
