@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+pub use eventsource_client::Error as EventsourceError;
+
 /// Error type returned from this library's functions
 #[derive(Debug, Error)]
 pub enum Error {
