@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
     if args.print_conversation {
         let json = serde_json::to_string_pretty(&args.conversation)?;
 
-        println!("{}", &json);
+        eprintln!("{}", &json);
     }
 
     if args.dry_run {

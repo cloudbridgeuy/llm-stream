@@ -121,7 +121,7 @@ pub async fn handle_stream(
 
         std::fs::write(&cache_file, cache_toml)?;
 
-        println!("\n\nCache file: {}", &cache_file);
+        eprintln!("\n\nCache file: {}", &cache_file);
     }
     Ok(())
 }
@@ -317,18 +317,44 @@ pub fn parse_args(mut args: Args, config: Config) -> Result<(Args, Config)> {
 
 /// Combines the existing arguments with the ones found on the cache file.
 pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
-    if args.from.is_none() {
+    if args.from.is_none() && !args.from_last {
         return Ok(args);
     }
 
-    let id = args.from.clone().expect("from is None");
-    let cache_file = format!(
-        "{}/cache/{}.toml",
+    let cache_dir = format!(
+        "{}/cache",
         args.config_dir
             .clone()
             .unwrap_or("~/.config/llm-stream".to_string()),
-        id
     );
+
+    if args.from_last {
+        args.from = Some(
+            std::fs::read_dir(&cache_dir)?
+                .filter_map(|entry| {
+                    let entry = entry.ok()?;
+                    let path = entry.path();
+                    if path.extension()?.to_str()? == "toml" {
+                        Some(path)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<std::path::PathBuf>>()
+                .iter()
+                .max()
+                .unwrap()
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string(),
+        );
+    }
+
+    let id = args.from.clone().expect("No cache file found");
+
+    let cache_file = format!("{}/{}.toml", cache_dir, id);
 
     if !std::path::Path::new(&cache_file).exists() {
         return Err(Error::CacheNotFound);

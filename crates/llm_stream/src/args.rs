@@ -213,4 +213,9 @@ pub struct Args {
     #[clap(long)]
     #[serde(skip_serializing)]
     pub from: Option<String>,
+
+    /// Continue from the last conversation
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub from_last: bool,
 }
