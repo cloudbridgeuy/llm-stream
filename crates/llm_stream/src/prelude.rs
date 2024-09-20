@@ -100,7 +100,14 @@ pub async fn handle_stream(
     }
 
     if !args.no_cache {
-        let id = args.from.clone().unwrap_or(xid::new().to_string());
+        let id = if args.fork {
+            if args.from.is_some() {
+                args.parent = args.from.clone();
+            }
+            xid::new().to_string()
+        } else {
+            args.from.clone().unwrap_or(xid::new().to_string())
+        };
 
         args.conversation.push(ConversationMessage {
             role: ConversationRole::Assistant,

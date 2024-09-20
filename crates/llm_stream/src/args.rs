@@ -218,4 +218,13 @@ pub struct Args {
     #[clap(long)]
     #[serde(skip_serializing, default)]
     pub from_last: bool,
+
+    /// Fork the conversation into a new one when using --from or --from-last flags.
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub fork: bool,
+
+    /// Conversation parent
+    #[clap(hide = true)]
+    pub parent: Option<String>,
 }
