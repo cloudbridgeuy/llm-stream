@@ -887,3 +887,22 @@ mod tests {
         Ok(())
     }
 }
+
+/// Prints the given conversation to stdout
+pub fn show(args: Args, text: &str) -> Result<()> {
+    let language = "toml";
+    let theme = Some(args.theme.clone().unwrap_or("ansi".to_string()));
+
+    if args.no_color {
+        println!("{}", text);
+    } else {
+        let output = crate::printer::CustomPrinter::new(&language, theme.as_deref())?
+            .input_from_bytes(&text.as_bytes())
+            .print()?;
+
+        println!("{}", output);
+        std::io::stdout().flush()?;
+    }
+
+    Ok(())
+}

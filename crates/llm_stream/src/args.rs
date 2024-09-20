@@ -219,7 +219,7 @@ pub struct Args {
     #[serde(skip_serializing, default)]
     pub from_last: bool,
 
-    /// Fork the conversation into a new one when using --from or --from-last flags.
+    /// Fork the conversation into a new one when using --from or --from-last options.
     #[clap(long)]
     #[serde(skip_serializing, default)]
     pub fork: bool,
@@ -227,4 +227,14 @@ pub struct Args {
     /// Conversation parent
     #[clap(hide = true)]
     pub parent: Option<String>,
+
+    /// Print the conversation defined in --from or --from-last to stdout
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub show: bool,
+
+    /// Don't use colors to print the output.
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub no_color: bool,
 }
