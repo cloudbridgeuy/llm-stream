@@ -147,8 +147,7 @@ pub fn build_config(mut args: Args) -> Result<(Args, Config)> {
     log::info!("config_dir: {}", &config_dir);
     log::info!("config_file: {}", &config_file);
 
-    // Check if `path` exists
-    let config = if !std::path::Path::new(&config_file).exists() {
+    let mut config = if !std::path::Path::new(&config_file).exists() {
         let config = Config::new();
         let config_toml = toml::to_string(&config)?;
         // Store `config_toml` in the `&config_file` path.
@@ -158,6 +157,32 @@ pub fn build_config(mut args: Args) -> Result<(Args, Config)> {
     } else {
         Config::from_config_file(&config_file)?
     };
+
+    let templates_dir = format!("{}/templates", &config_dir);
+    if !std::path::Path::new(&templates_dir).exists() {
+        std::fs::create_dir_all(&templates_dir)?;
+    }
+
+    let templates = std::fs::read_dir(&templates_dir)?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.extension()?.to_str()? == "toml" {
+                let contents = std::fs::read_to_string(&path).ok()?;
+                let template: crate::config::Template = toml::from_str(&contents).ok()?;
+
+                Some(template)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<crate::config::Template>>();
+
+    config.templates = Some(if let Some(config_templates) = config.templates {
+        config_templates.into_iter().chain(templates).collect()
+    } else {
+        templates
+    });
 
     Ok((args, config))
 }
