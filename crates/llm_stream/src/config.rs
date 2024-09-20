@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::conversation::ConversationMessage;
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Preset {
     pub name: String,
 

@@ -14,6 +14,8 @@ pub enum Error {
     TryFrom(#[from] std::num::TryFromIntError),
     #[error("api not specified")]
     ApiNotSpecified,
+    #[error("cache not found")]
+    CacheNotFound,
     #[error("config file error")]
     ConfigFile(#[from] config_file::ConfigFileError),
     #[error("infallible error")]
@@ -22,10 +24,12 @@ pub enum Error {
     TemplateNotFound,
     #[error("tera error")]
     Tera(#[from] tera::Error),
-    #[error("toml error")]
-    TOML(#[from] toml::ser::Error),
+    #[error("toml deserialization error")]
+    TomlDe(#[from] toml::de::Error),
+    #[error("toml serialization error")]
+    TomlSer(#[from] toml::ser::Error),
     #[error("json error")]
-    JSON(#[from] serde_json::Error),
+    Json(#[from] serde_json::Error),
     #[error("file or stdin error")]
     Stdin(#[from] clap_stdin::StdinError),
 }

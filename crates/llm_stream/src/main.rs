@@ -18,31 +18,59 @@ use crate::prelude::*;
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let args = parse_prompt(Args::parse())?;
+    let mut args = Args::parse();
 
     log::info!("args: {:#?}", args);
 
-    let (args, config) = build_config(args)?;
+    let home = std::env::var("HOME")?;
 
-    log::info!("config: {:#?}", config);
+    let config_dir = args
+        .config_dir
+        .clone()
+        .unwrap_or("~/.config/llm-stream".to_string())
+        .replace('~', &home);
+
+    args.config_dir = Some(config_dir.clone());
+
+    if !std::path::Path::new(&config_dir).exists() {
+        std::fs::create_dir_all(&config_dir)?;
+    }
+
+    args.config_file = if let Some(config_file) = args.config_file {
+        Some(config_file.clone().replace('~', &home))
+    } else {
+        Some(config_dir.to_string() + "/config.toml")
+    };
 
     if args.config {
         if let Some(config_file) = args.config_file {
             println!("{}", config_file);
         } else {
-            println!("{}/config.toml", args.config_dir);
+            println!("{}/config.toml", args.config_dir.unwrap());
         }
         return Ok(());
     }
 
     if args.dir {
-        println!("{}", args.config_dir);
+        println!("{}", args.config_dir.unwrap());
         return Ok(());
     }
 
+    let (args, config) = build_config(args)?;
+
+    log::info!("config: {:#?}", config);
+
+    let (args, config) = parse_args(args, config)?;
+
+    log::info!("parsed args: {:#?}", args);
+
+    let args = merge_args_and_cache(args)?;
+
+    log::info!("merged args and cache: {:#?}", args);
+
     let args = merge_args_and_config(args, config)?;
 
-    log::info!("merged args: {:#?}", args);
+    log::info!("merged args and config: {:#?}", args);
 
     if args.print_conversation {
         let json = serde_json::to_string_pretty(&args.conversation)?;

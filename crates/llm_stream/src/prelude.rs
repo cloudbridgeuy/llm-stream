@@ -18,7 +18,7 @@ const CONTENT_TEMPLATE: &str = "template";
 pub async fn handle_stream(
     mut stream: impl Stream<Item = std::result::Result<String, llm_stream::error::Error>>
         + std::marker::Unpin,
-    args: Args,
+    mut args: Args,
 ) -> Result<()> {
     let mut previous_output = String::new();
     let mut accumulated_content_bytes: Vec<u8> = Vec::new();
@@ -34,8 +34,8 @@ pub async fn handle_stream(
         None
     };
 
-    let language = args.language.unwrap_or("markdown".to_string());
-    let theme = Some(args.theme.unwrap_or("ansi".to_string()));
+    let language = args.language.clone().unwrap_or("markdown".to_string());
+    let theme = Some(args.theme.clone().unwrap_or("ansi".to_string()));
 
     loop {
         let result = stream.try_next().await;
@@ -99,10 +99,31 @@ pub async fn handle_stream(
         };
     }
 
-    Ok(())
+    if !args.no_cache {
+        let id = args.from.clone().unwrap_or(xid::new().to_string());
 
-    // while let Ok(Some(text)) = stream.try_next().await {
-    // }
+        args.conversation.push(ConversationMessage {
+            role: ConversationRole::Assistant,
+            content: String::from_utf8_lossy(&accumulated_content_bytes)
+                .trim()
+                .to_string(),
+        });
+
+        let cache_file = format!(
+            "{}/cache/{}.toml",
+            args.config_dir
+                .clone()
+                .unwrap_or("~/.config/llm-stream".to_string()),
+            id
+        );
+
+        let cache_toml = toml::to_string(&args)?;
+
+        std::fs::write(&cache_file, cache_toml)?;
+
+        println!("\n\nCache file: {}", &cache_file);
+    }
+    Ok(())
 }
 
 /// Merges two JSON objects defined as `serde_json::Value`.
@@ -126,22 +147,11 @@ pub fn merge(a: &mut Value, b: Value) {
 }
 
 /// Reads the configuration file. If it or the config directory doesn't exist, they'll be created.
-pub fn build_config(mut args: Args) -> Result<(Args, Config)> {
-    let home = std::env::var("HOME")?;
-    args.config_dir = args.config_dir.clone().replace('~', &home);
-
-    if !std::path::Path::new(&args.config_dir).exists() {
-        std::fs::create_dir_all(args.config_dir.clone())?;
-    }
-
-    let config_dir = args.config_dir.clone();
-
-    args.config_file = if let Some(config_file) = args.config_file {
-        Some(config_file.clone().replace('~', &home))
-    } else {
-        Some(config_dir.to_string() + "/config.toml")
-    };
-
+pub fn build_config(args: Args) -> Result<(Args, Config)> {
+    let config_dir = args
+        .config_dir
+        .clone()
+        .unwrap_or("~/.config/llm-stream".to_string());
     let config_file = args.config_file.clone().unwrap();
 
     log::info!("config_dir: {}", &config_dir);
@@ -161,6 +171,11 @@ pub fn build_config(mut args: Args) -> Result<(Args, Config)> {
     let templates_dir = format!("{}/templates", &config_dir);
     if !std::path::Path::new(&templates_dir).exists() {
         std::fs::create_dir_all(&templates_dir)?;
+    }
+
+    let cache_dir = format!("{}/cache", &config_dir);
+    if !std::path::Path::new(&cache_dir).exists() {
+        std::fs::create_dir_all(&cache_dir)?;
     }
 
     let templates = std::fs::read_dir(&templates_dir)?
@@ -223,7 +238,7 @@ pub fn build_config(mut args: Args) -> Result<(Args, Config)> {
 /// ```
 ///
 /// This will render `prompt` to be `Something, and `stdin` to be `Awesome`.
-pub fn parse_prompt(mut args: Args) -> Result<Args> {
+pub fn parse_args(mut args: Args, config: Config) -> Result<(Args, Config)> {
     let stdin = std::io::stdin();
 
     args.stdin = Some(if stdin.is_terminal() {
@@ -234,11 +249,130 @@ pub fn parse_prompt(mut args: Args) -> Result<Args> {
             .lines()
             .collect::<std::result::Result<Vec<String>, std::io::Error>>()?
             .join("\n")
+            .trim()
+            .to_string()
     });
 
     if args.prompt.is_none() {
-        args.prompt = args.stdin.clone();
+        args.prompt = Some(args.stdin.clone().unwrap_or_default().trim().to_string());
         args.stdin = None;
+    }
+
+    if let Some(preset) = args.preset.clone() {
+        let p = config
+            .presets
+            .clone()
+            .unwrap_or(vec![])
+            .into_iter()
+            .find(|p| p.name == preset);
+
+        if let Some(p) = p {
+            if args.api.is_none() {
+                args.api = Some(p.api);
+            }
+
+            if args.top_p.is_none() {
+                args.top_p = p.top_p;
+            }
+            if args.top_k.is_none() {
+                args.top_k = p.top_k;
+            }
+            if args.temperature.is_none() {
+                args.temperature = p.temperature;
+            }
+            if args.conversation.len() == 0
+                || args.conversation.first().unwrap().role != ConversationRole::System
+            {
+                args.conversation.insert(
+                    0,
+                    ConversationMessage {
+                        role: ConversationRole::System,
+                        content: p.system.clone().unwrap_or_default(),
+                    },
+                );
+            }
+            if args.max_tokens.is_none() {
+                args.max_tokens = p.max_tokens;
+            }
+            if args.api_version.is_none() {
+                args.api_version = p.version;
+            }
+            if args.api_env.is_none() {
+                args.api_env = p.env;
+            }
+            if args.api_key.is_none() {
+                args.api_key = p.key;
+            }
+            if args.api_base_url.is_none() {
+                args.api_base_url = p.base_url;
+            }
+            if args.model.is_none() {
+                args.model = p.model;
+            }
+        }
+    };
+
+    Ok((args, config))
+}
+
+/// Combines the existing arguments with the ones found on the cache file.
+pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
+    if args.from.is_none() {
+        return Ok(args);
+    }
+
+    let id = args.from.clone().expect("from is None");
+    let cache_file = format!(
+        "{}/cache/{}.toml",
+        args.config_dir
+            .clone()
+            .unwrap_or("~/.config/llm-stream".to_string()),
+        id
+    );
+
+    if !std::path::Path::new(&cache_file).exists() {
+        return Err(Error::CacheNotFound);
+    }
+
+    let cache_args = toml::from_str::<Args>(&std::fs::read_to_string(&cache_file)?)?;
+
+    args.conversation = cache_args.conversation;
+
+    if args.api.is_none() {
+        args.api = cache_args.api;
+    }
+    if args.model.is_none() {
+        args.model = cache_args.model;
+    }
+    if args.api_version.is_none() {
+        args.api_version = cache_args.api_version;
+    }
+    if args.api_env.is_none() {
+        args.api_env = cache_args.api_env;
+    }
+    if args.api_key.is_none() {
+        args.api_key = cache_args.api_key;
+    }
+    if args.temperature.is_none() {
+        args.temperature = cache_args.temperature;
+    }
+    if args.max_tokens.is_none() {
+        args.max_tokens = cache_args.max_tokens;
+    }
+    if args.quiet.is_none() {
+        args.quiet = cache_args.quiet;
+    }
+    if args.language.is_none() {
+        args.language = cache_args.language;
+    }
+    if args.theme.is_none() {
+        args.theme = cache_args.theme;
+    }
+    if args.top_p.is_none() {
+        args.top_p = cache_args.top_p;
+    }
+    if args.top_k.is_none() {
+        args.top_k = cache_args.top_k;
     }
 
     Ok(args)
@@ -332,65 +466,16 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
                 }
             }
         }
-    } else if !args.stdin.is_none() {
-        args.prompt = Some(format!(
-            "{}\n{}",
-            args.stdin.clone().unwrap(),
-            args.prompt.clone().unwrap_or_default()
-        ));
-    };
-
-    if let Some(preset) = args.preset.clone() {
-        let p = config
-            .presets
-            .unwrap_or_default()
-            .into_iter()
-            .find(|p| p.name == preset);
-
-        if let Some(p) = p {
-            if args.api.is_none() {
-                args.api = Some(p.api);
-            }
-
-            if args.top_p.is_none() {
-                args.top_p = p.top_p;
-            }
-            if args.top_k.is_none() {
-                args.top_k = p.top_k;
-            }
-            if args.temperature.is_none() {
-                args.temperature = p.temperature;
-            }
-            if args.conversation.len() == 0
-                || args.conversation.first().unwrap().role != ConversationRole::System
-            {
-                args.conversation.insert(
-                    0,
-                    ConversationMessage {
-                        role: ConversationRole::System,
-                        content: p.system.clone().unwrap_or_default(),
-                    },
-                );
-            }
-            if args.max_tokens.is_none() {
-                args.max_tokens = p.max_tokens;
-            }
-            if args.api_version.is_none() {
-                args.api_version = p.version;
-            }
-            if args.api_env.is_none() {
-                args.api_env = p.env;
-            }
-            if args.api_key.is_none() {
-                args.api_key = p.key;
-            }
-            if args.api_base_url.is_none() {
-                args.api_base_url = p.base_url;
-            }
-            if args.model.is_none() {
-                args.model = p.model;
-            }
-        }
+    } else if args.stdin.is_some() {
+        args.prompt = Some(
+            format!(
+                "{}\n{}",
+                args.stdin.clone().unwrap(),
+                args.prompt.clone().unwrap_or_default()
+            )
+            .trim()
+            .to_string(),
+        );
     };
 
     if args.top_p.is_none() {

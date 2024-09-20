@@ -56,7 +56,7 @@ impl FromStr for Api {
     }
 }
 
-#[derive(Default, Clone, Debug, Parser, PartialEq)]
+#[derive(Default, Clone, Debug, Parser, PartialEq, Serialize, Deserialize)]
 #[command(name = "e", version = "0.1.0")]
 #[command(about = "Interact with LLMs through the terminal")]
 #[command(
@@ -78,15 +78,18 @@ efficiently, ensuring a smooth user experience when interacting with the LLMs."
 )]
 pub struct Args {
     /// The user message prompt. If `-` is provided, `stdin` will be read instead.
+    #[serde(skip_serializing)]
     pub prompt: Option<String>,
 
     /// Additional file input to add to the prompt. If `-` is provided, `stdin` will be read
     /// instead.
     #[clap(hide = true)]
+    #[serde(skip_serializing)]
     pub stdin: Option<String>,
 
     /// Suffix prompt
     #[clap(long)]
+    #[serde(skip_serializing)]
     pub suffix: Option<String>,
 
     /// The API provider to use.
@@ -123,6 +126,7 @@ pub struct Args {
 
     /// Don't run the spinner
     #[clap(long)]
+    #[serde(skip_serializing)]
     pub quiet: Option<bool>,
 
     /// Language to use for syntax highlight
@@ -131,6 +135,7 @@ pub struct Args {
 
     /// Add a system message to the request.
     #[clap(long)]
+    #[serde(skip_serializing)]
     pub system: Option<String>,
 
     /// Temperature value.
@@ -147,10 +152,12 @@ pub struct Args {
 
     /// Prompt template to use
     #[clap(short, long)]
+    #[serde(skip_serializing)]
     pub template: Option<String>,
 
     /// Additional variables in JSON format
     #[clap(long, default_value="{}", value_parser = parse_json)]
+    #[serde(skip_serializing)]
     pub vars: Option<Value>,
 
     /// Conversation to append to the model.
@@ -159,33 +166,51 @@ pub struct Args {
 
     /// Language to use for syntax highlight
     #[clap(long, default_value = "ansi")]
+    #[serde(skip_serializing)]
     pub theme: Option<String>,
 
     /// Config dir where the configuration and conversation history will be stored.
     #[clap(long, default_value = "~/.config/llm-stream")]
-    pub config_dir: String,
+    #[serde(skip_serializing)]
+    pub config_dir: Option<String>,
 
     /// Config file. If undefined, it will be set as `config_dir/config.toml`.
     #[clap(long)]
+    #[serde(skip_serializing)]
     pub config_file: Option<String>,
 
     /// Preset configuration
     #[clap(short, long)]
+    #[serde(skip_serializing)]
     pub preset: Option<String>,
 
     /// Prints the configuration directories
     #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
     pub dir: bool,
 
     /// Prints the configuration file in use.
     #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
     pub config: bool,
 
     /// Prints the conversation to be sent to the LLM.
     #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
     pub print_conversation: bool,
 
     /// Don't call the LLM.
     #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
     pub dry_run: bool,
+
+    /// Don't cache the conversation details.
+    #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
+    pub no_cache: bool,
+
+    /// Continue the conversation identified by its id.
+    #[clap(long)]
+    #[serde(skip_serializing)]
+    pub from: Option<String>,
 }
