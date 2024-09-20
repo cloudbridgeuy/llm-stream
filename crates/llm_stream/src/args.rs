@@ -224,9 +224,17 @@ pub struct Args {
     #[serde(skip_serializing, default)]
     pub fork: bool,
 
-    /// Conversation parent
+    /// Conversation parent.
     #[clap(hide = true)]
     pub parent: Option<String>,
+
+    /// Conversation description.
+    #[clap(long)]
+    pub description: Option<String>,
+
+    /// Conversation title.
+    #[clap(long)]
+    pub title: Option<String>,
 
     /// Print the conversation defined in --from or --from-last to stdout
     #[clap(long)]
