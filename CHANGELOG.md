@@ -1,5 +1,28 @@
 # Changelog
 
+## llm-stream [0.3.0] - 2024-09-21
+
+### Added
+
+- Add description and title options for conversations
+- Add conversation display and color control options
+- Add conversation forking functionality
+- Add option to continue from last conversation
+- Add conversation caching and continuation
+- Add support for loading templates from directory
+
+### Changed
+
+- Change println! to eprintln! for non-content output
+
+### Exposed
+
+- Expose EventsourceError from eventsource_client
+
+### Chore
+
+- Bump version to 0.3.1
+
 ## 0.3.1
 
 ### Added
