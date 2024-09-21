@@ -1,3 +1,4 @@
+use cli_table::{format::Justify, print_stdout, Color, ColorChoice, Table, WithTitle};
 use config_file::FromConfigFile;
 use futures::stream::{Stream, TryStreamExt};
 use serde_json::Value;
@@ -322,6 +323,31 @@ pub fn parse_args(mut args: Args, config: Config) -> Result<(Args, Config)> {
     Ok((args, config))
 }
 
+fn get_latest_toml_file(cache_dir: &str) -> Result<Option<String>> {
+    let cache_files = std::fs::read_dir(cache_dir)?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.extension()?.to_str()? == "toml" {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<std::path::PathBuf>>();
+
+    let latest_file = cache_files.iter().max_by_key(|path| {
+        std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+    });
+
+    Ok(latest_file.and_then(|path| {
+        path.file_stem()
+            .and_then(|stem| stem.to_str().map(String::from))
+    }))
+}
+
 /// Combines the existing arguments with the ones found on the cache file.
 pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
     if args.from.is_none() && !args.from_last {
@@ -336,27 +362,7 @@ pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
     );
 
     if args.from_last {
-        args.from = Some(
-            std::fs::read_dir(&cache_dir)?
-                .filter_map(|entry| {
-                    let entry = entry.ok()?;
-                    let path = entry.path();
-                    if path.extension()?.to_str()? == "toml" {
-                        Some(path)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<std::path::PathBuf>>()
-                .iter()
-                .max()
-                .unwrap()
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string(),
-        );
+        args.from = get_latest_toml_file(&cache_dir)?
     }
 
     let id = args.from.clone().expect("No cache file found");
@@ -888,8 +894,147 @@ mod tests {
     }
 }
 
+#[derive(Table)]
+struct ConversationLine {
+    #[table(title = "ID", justify = "Justify::Left", color = "Color::Cyan")]
+    id: String,
+    #[table(title = "Parent", justify = "Justify::Left", color = "Color::Magenta")]
+    parent: String,
+    #[table(title = "Title", justify = "Justify::Left")]
+    title: String,
+    #[table(title = "Description", justify = "Justify::Left")]
+    description: String,
+}
+
+impl ConversationLine {
+    pub fn new(
+        id: String,
+        parent: Option<String>,
+        title: Option<String>,
+        description: Option<String>,
+    ) -> Self {
+        Self {
+            id,
+            parent: parent.unwrap_or_default(),
+            title: title.unwrap_or_default(),
+            description: description.unwrap_or_default(),
+        }
+    }
+}
+
+fn get_sorted_cache_files(cache_dir: &str) -> Result<Vec<std::path::PathBuf>> {
+    let mut cache_files = std::fs::read_dir(cache_dir)?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.extension()?.to_str()? == "toml" {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<std::path::PathBuf>>();
+
+    cache_files.sort_by_key(|path| {
+        std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+    });
+
+    Ok(cache_files)
+}
+
+/// Prints a list of existing conversations
+pub fn list(args: Args) -> Result<()> {
+    let config_dir = args.config_dir.clone().expect("can't find cache directory");
+    let cache_dir = format!("{}/cache", &config_dir);
+
+    // Get a list of all the `toml` files inside the `cache_dir`
+    let cache_files = get_sorted_cache_files(&cache_dir)?;
+
+    let lines = cache_files
+        .iter()
+        .map(|path| {
+            let id = path.file_stem().unwrap().to_str().unwrap();
+            let cache_toml = std::fs::read_to_string(&path).unwrap();
+            let args: Args = toml::from_str(&cache_toml).unwrap();
+            let description = Some(
+                if let Some(description) = args.description {
+                    description
+                } else if args.conversation.is_empty() {
+                    "Empty".to_string()
+                } else {
+                    // Get the first message in `args.conversation` whose `role` is
+                    // `ConversationRole::Assistant.
+                    let message = args
+                        .conversation
+                        .iter()
+                        .rev()
+                        .find(|m| m.role == ConversationRole::Assistant)
+                        .unwrap_or(args.conversation.first().expect("No messages"));
+                    message
+                        .content
+                        .clone()
+                        .split("\n")
+                        .next()
+                        .unwrap()
+                        .to_string()
+                }
+                .chars()
+                .take(120)
+                .collect::<String>()
+                .to_string(),
+            );
+            ConversationLine::new(id.to_string(), args.parent, args.title, description)
+        })
+        .collect::<Vec<ConversationLine>>();
+
+    let vert_line = cli_table::format::VerticalLine::new(' ');
+    let horz_line = cli_table::format::HorizontalLine::new(' ', ' ', ' ', ' ');
+    let border = cli_table::format::Border::builder()
+        .top(horz_line)
+        .bottom(horz_line)
+        .left(vert_line)
+        .right(vert_line)
+        .build();
+    let separator = cli_table::format::Separator::builder()
+        .row(None)
+        .column(None)
+        .title(None)
+        .build();
+    let is_terminal = atty::is(atty::Stream::Stdout);
+
+    let table = if is_terminal {
+        lines.with_title()
+    } else {
+        lines.table()
+    };
+
+    print_stdout(table.separator(separator).border(border).color_choice(
+        if args.no_color || !is_terminal {
+            ColorChoice::Never
+        } else {
+            ColorChoice::Always
+        },
+    ))?;
+
+    Ok(())
+}
+
 /// Prints the given conversation to stdout
-pub fn show(args: Args, text: &str) -> Result<()> {
+pub fn show(args: Args) -> Result<()> {
+    // Read the cache file from `args.config_dir/args.from`
+    let cache_file = format!(
+        "{}/cache/{}.toml",
+        args.config_dir.clone().expect("can't find cache directory"),
+        args.from
+            .clone()
+            .expect("--from or --from-last needs to be defined when run with --show")
+    );
+
+    // Read the contents of cache_file
+    let text = std::fs::read_to_string(&cache_file)?;
+
     let language = "toml";
     let theme = Some(args.theme.clone().unwrap_or("ansi".to_string()));
 

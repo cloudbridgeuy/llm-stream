@@ -68,22 +68,12 @@ async fn main() -> Result<()> {
 
     log::info!("merged args and cache: {:#?}", args);
 
+    if args.list {
+        return list(args);
+    }
+
     if args.show {
-        // Read the cache file from `args.config_dir/args.from`
-        let cache_file = format!(
-            "{}/cache/{}.toml",
-            args.config_dir.clone().expect("can't find cache directory"),
-            args.from
-                .clone()
-                .expect("--from or --from-last needs to be defined when run with --show")
-        );
-
-        // Read the contents of cache_file
-        let cache = std::fs::read_to_string(&cache_file)?;
-
-        show(args, &cache)?;
-
-        return Ok(());
+        return show(args);
     }
 
     let args = merge_args_and_config(args, config)?;

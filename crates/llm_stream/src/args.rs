@@ -241,6 +241,11 @@ pub struct Args {
     #[serde(skip_serializing, default)]
     pub show: bool,
 
+    /// Print the list of existing conversations.
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub list: bool,
+
     /// Don't use colors to print the output.
     #[clap(long)]
     #[serde(skip_serializing, default)]
