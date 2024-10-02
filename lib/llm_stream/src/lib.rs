@@ -3,4 +3,5 @@ pub mod error;
 pub mod google;
 pub mod mistral;
 pub mod mistral_fim;
+pub mod ollama;
 pub mod openai;
