@@ -20,6 +20,7 @@ fn parse_conversation(s: &str) -> std::result::Result<Conversation, serde_json::
 #[serde(rename_all = "lowercase")]
 pub enum Api {
     OpenAi,
+    Ollama,
     #[default]
     Anthropic,
     Google,
@@ -51,6 +52,8 @@ impl FromStr for Api {
             "Mistral_FIM" => Ok(Api::MistralFim),
             "Mistral_Fim" => Ok(Api::MistralFim),
             "MistralFIM" => Ok(Api::MistralFim),
+            "Ollama" => Ok(Api::Ollama),
+            "ollama" => Ok(Api::Ollama),
             _ => Err(Error::InvalidAPI),
         }
     }

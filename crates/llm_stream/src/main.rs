@@ -8,6 +8,7 @@ mod error;
 mod google;
 mod mistral;
 mod mistral_fim;
+mod ollama;
 mod openai;
 mod prelude;
 mod printer;
@@ -96,6 +97,7 @@ async fn main() -> Result<()> {
         Some(Api::Google) => google::run(args).await,
         Some(Api::Mistral) => mistral::run(args).await,
         Some(Api::MistralFim) => mistral_fim::run(args).await,
+        Some(Api::Ollama) => ollama::run(args).await,
         None => Err(Error::ApiNotSpecified),
     }
 }
