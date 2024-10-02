@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.4.0] - 2024-10-02
+
+### Added
+
+#### LLM Stream
+
+- Support for Ollama API ([411b783](https://github.com/yourusername/yourrepository/commit/411b783), [544d621](https://github.com/yourusername/yourrepository/commit/544d621))
+- Description and title options for conversations ([eaa13e7](https://github.com/yourusername/yourrepository/commit/eaa13e7))
+- Conversation display and color control options ([213f1df](https://github.com/yourusername/yourrepository/commit/213f1df))
+- Conversation forking functionality ([cd549d0](https://github.com/yourusername/yourrepository/commit/cd549d0))
+- Option to continue from last conversation ([02fa9a8](https://github.com/yourusername/yourrepository/commit/02fa9a8))
+- Conversation caching and continuation ([80990f2](https://github.com/yourusername/yourrepository/commit/80990f2))
+
+#### Config
+
+- Support for loading templates from directory ([515b083](https://github.com/yourusername/yourrepository/commit/515b083))
+
+### Changed
+
+#### LLM Stream
+
+- Changed println! to eprintln! for non-content output ([02fa9a8](https://github.com/yourusername/yourrepository/commit/02fa9a8))
+
 ## llm-stream [0.3.0] - 2024-09-21
 
 ### Added
