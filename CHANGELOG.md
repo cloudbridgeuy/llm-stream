@@ -1,5 +1,21 @@
 # Changelog
 
+## [llm-stream/0.4.0] - 2024-10-04
+
+### Added
+
+- Support for Groq API in llm_stream
+- Preset and template listing functionality in llm_stream
+- Support for Ollama API in llm_stream
+
+### Changed
+
+- Improved Api enum and code organization in llm_stream
+
+### Other
+
+- Added option to skip changelog generation during publish in xtask
+
 ## [0.4.0] - 2024-10-02
 
 ### Added
