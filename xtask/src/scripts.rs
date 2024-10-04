@@ -113,11 +113,18 @@ pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
 pub fn publish(args: &cli::PublishArgs) -> Result<(), Box<dyn Error>> {
     let version = &args.next_version;
 
-    println!("{$magenta}Running the changelog command{/$}");
-    changelog(&cli::ChangelogArgs {
-        prev_version: args.prev_version.clone(),
-        next_version: version.clone(),
-    })?;
+    if args.no_changelog {
+        println!("{$magenta}Skipping the changelog command{/$}");
+    } else {
+        println!("{$magenta}Running the changelog command{/$}");
+        changelog(&cli::ChangelogArgs {
+            prev_version: args
+                .prev_version
+                .clone()
+                .expect("prev_version is undefined"),
+            next_version: version.clone(),
+        })?;
+    }
 
     println!("{$magenta}Publishing {[yellow]} to GitHub{/$}", &version);
     github(&GithubArgs {

@@ -37,7 +37,7 @@ pub struct BuildArgs {
 pub struct PublishArgs {
     /// The previous version of the library.
     #[arg(short, long)]
-    pub prev_version: String,
+    pub prev_version: Option<String>,
 
     /// The next version of the library.
     #[arg(short, long)]
@@ -50,6 +50,10 @@ pub struct PublishArgs {
     /// Dry run flag.
     #[arg(short, long)]
     pub dry_run: bool,
+
+    /// Don't create changelog
+    #[arg(long)]
+    pub no_changelog: bool,
 }
 
 #[derive(Args, Debug)]
