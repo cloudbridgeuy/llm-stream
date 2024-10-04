@@ -6,6 +6,7 @@ mod config;
 mod conversation;
 mod error;
 mod google;
+mod groq;
 mod mistral;
 mod mistral_fim;
 mod ollama;
@@ -63,6 +64,26 @@ async fn main() -> Result<()> {
 
     let (args, config) = parse_args(args, config)?;
 
+    if args.templates {
+        let template_lines = config
+            .templates
+            .unwrap_or_default()
+            .iter()
+            .map(|template| (*template).clone().into())
+            .collect::<Vec<TemplateLine>>();
+        return templates(template_lines, args.no_color);
+    }
+
+    if args.presets {
+        let preset_lines = config
+            .presets
+            .unwrap_or_default()
+            .iter()
+            .map(|preset| (*preset).clone().into())
+            .collect::<Vec<PresetLine>>();
+        return presets(preset_lines, args.no_color);
+    }
+
     log::info!("parsed args: {:#?}", args);
 
     let args = merge_args_and_cache(args)?;
@@ -98,6 +119,7 @@ async fn main() -> Result<()> {
         Some(Api::Mistral) => mistral::run(args).await,
         Some(Api::MistralFim) => mistral_fim::run(args).await,
         Some(Api::Ollama) => ollama::run(args).await,
+        Some(Api::Groq) => groq::run(args).await,
         None => Err(Error::ApiNotSpecified),
     }
 }

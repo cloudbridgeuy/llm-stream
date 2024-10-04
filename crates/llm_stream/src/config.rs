@@ -36,7 +36,7 @@ pub enum Role {
     System,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Template {
     pub name: String,
     pub description: Option<String>,

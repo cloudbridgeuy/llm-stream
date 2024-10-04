@@ -922,6 +922,46 @@ impl ConversationLine {
     }
 }
 
+#[derive(Table)]
+pub struct PresetLine {
+    #[table(title = "Name", justify = "Justify::Left", color = "Color::Cyan")]
+    pub name: String,
+    #[table(title = "Api", justify = "Justify::Left", color = "Color::Magenta")]
+    pub api: String,
+    #[table(title = "BaseUrl", justify = "Justify::Left")]
+    pub base_url: String,
+    #[table(title = "Model", justify = "Justify::Left")]
+    pub model: String,
+}
+
+impl From<crate::config::Preset> for PresetLine {
+    fn from(preset: crate::config::Preset) -> Self {
+        PresetLine {
+            name: preset.name,
+            api: format!("{:?}", preset.api),
+            base_url: preset.base_url.unwrap_or_else(|| "".to_string()),
+            model: preset.model.unwrap_or_else(|| "".to_string()),
+        }
+    }
+}
+
+#[derive(Table)]
+pub struct TemplateLine {
+    #[table(title = "Name", justify = "Justify::Left", color = "Color::Cyan")]
+    pub name: String,
+    #[table(title = "Description", justify = "Justify::Left")]
+    pub description: String,
+}
+
+impl From<crate::config::Template> for TemplateLine {
+    fn from(template: crate::config::Template) -> Self {
+        TemplateLine {
+            name: template.name,
+            description: template.description.unwrap_or_else(|| "".to_string()),
+        }
+    }
+}
+
 fn get_sorted_cache_files(cache_dir: &str) -> Result<Vec<std::path::PathBuf>> {
     let mut cache_files = std::fs::read_dir(cache_dir)?
         .filter_map(|entry| {
@@ -989,6 +1029,14 @@ pub fn list(args: Args) -> Result<()> {
         })
         .collect::<Vec<ConversationLine>>();
 
+    let is_terminal: bool = atty::is(atty::Stream::Stdout);
+
+    let table = if is_terminal {
+        lines.with_title()
+    } else {
+        lines.table()
+    };
+
     let vert_line = cli_table::format::VerticalLine::new(' ');
     let horz_line = cli_table::format::HorizontalLine::new(' ', ' ', ' ', ' ');
     let border = cli_table::format::Border::builder()
@@ -1002,13 +1050,6 @@ pub fn list(args: Args) -> Result<()> {
         .column(None)
         .title(None)
         .build();
-    let is_terminal = atty::is(atty::Stream::Stdout);
-
-    let table = if is_terminal {
-        lines.with_title()
-    } else {
-        lines.table()
-    };
 
     print_stdout(table.separator(separator).border(border).color_choice(
         if args.no_color || !is_terminal {
@@ -1048,6 +1089,74 @@ pub fn show(args: Args) -> Result<()> {
         println!("{}", output);
         std::io::stdout().flush()?;
     }
+
+    Ok(())
+}
+
+/// Prints the presets table to `stdout`.
+pub fn presets(lines: Vec<PresetLine>, no_color: bool) -> Result<()> {
+    let is_terminal: bool = atty::is(atty::Stream::Stdout);
+    let table = if is_terminal {
+        lines.with_title()
+    } else {
+        lines.table()
+    };
+
+    let vert_line = cli_table::format::VerticalLine::new(' ');
+    let horz_line = cli_table::format::HorizontalLine::new(' ', ' ', ' ', ' ');
+    let border = cli_table::format::Border::builder()
+        .top(horz_line)
+        .bottom(horz_line)
+        .left(vert_line)
+        .right(vert_line)
+        .build();
+    let separator = cli_table::format::Separator::builder()
+        .row(None)
+        .column(None)
+        .title(None)
+        .build();
+
+    print_stdout(table.separator(separator).border(border).color_choice(
+        if no_color || !is_terminal {
+            ColorChoice::Never
+        } else {
+            ColorChoice::Always
+        },
+    ))?;
+
+    Ok(())
+}
+
+/// Prints the templates table to `stdout`.
+pub fn templates(lines: Vec<TemplateLine>, no_color: bool) -> Result<()> {
+    let is_terminal: bool = atty::is(atty::Stream::Stdout);
+    let table = if is_terminal {
+        lines.with_title()
+    } else {
+        lines.table()
+    };
+
+    let vert_line = cli_table::format::VerticalLine::new(' ');
+    let horz_line = cli_table::format::HorizontalLine::new(' ', ' ', ' ', ' ');
+    let border = cli_table::format::Border::builder()
+        .top(horz_line)
+        .bottom(horz_line)
+        .left(vert_line)
+        .right(vert_line)
+        .build();
+    let separator = cli_table::format::Separator::builder()
+        .row(None)
+        .column(None)
+        .title(None)
+        .build();
+
+    print_stdout(table.separator(separator).border(border).color_choice(
+        if no_color || !is_terminal {
+            ColorChoice::Never
+        } else {
+            ColorChoice::Always
+        },
+    ))?;
 
     Ok(())
 }

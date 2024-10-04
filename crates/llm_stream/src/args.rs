@@ -24,8 +24,24 @@ pub enum Api {
     #[default]
     Anthropic,
     Google,
+    Groq,
     Mistral,
     MistralFim,
+}
+
+// Implement Display for `Api`
+impl std::fmt::Display for Api {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Api::OpenAi => write!(f, "OpenAi"),
+            Api::Anthropic => write!(f, "Anthropic"),
+            Api::Google => write!(f, "Google"),
+            Api::Groq => write!(f, "Groq"),
+            Api::Mistral => write!(f, "Mistral"),
+            Api::MistralFim => write!(f, "MistralFim"),
+            Api::Ollama => write!(f, "Ollama"),
+        }
+    }
 }
 
 // From string to API enum
@@ -54,6 +70,8 @@ impl FromStr for Api {
             "MistralFIM" => Ok(Api::MistralFim),
             "Ollama" => Ok(Api::Ollama),
             "ollama" => Ok(Api::Ollama),
+            "groq" => Ok(Api::Groq),
+            "Groq" => Ok(Api::Groq),
             _ => Err(Error::InvalidAPI),
         }
     }
@@ -248,6 +266,16 @@ pub struct Args {
     #[clap(long)]
     #[serde(skip_serializing, default)]
     pub list: bool,
+
+    /// Print the list of configured presets.
+    #[clap(long)]
+    #[serde(skip_serializing)]
+    pub presets: bool,
+
+    /// Print the list of configured templates.
+    #[clap(long)]
+    #[serde(skip_serializing)]
+    pub templates: bool,
 
     /// Don't use colors to print the output.
     #[clap(long)]
