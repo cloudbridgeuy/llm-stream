@@ -10,7 +10,7 @@ async fn main() -> Result<()> {
     let key = std::env::var("GROQ_API_KEY")?;
 
     let auth = Auth::new(key);
-    let client = Client::new(auth, "https://api.groq.com");
+    let client = Client::new(auth, "https://api.groq.com/openai/v1");
 
     let messages = vec![Message {
         role: Role::User,

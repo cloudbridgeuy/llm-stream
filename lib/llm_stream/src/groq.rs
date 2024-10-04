@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::error::Error;
 
 // Chat Completions Api
-const CHAT_API: &str = "/openai/v1/chat/completions";
+const CHAT_API: &str = "/chat/completions";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
@@ -33,11 +33,6 @@ pub struct MessageBody {
     /// The maximum number of tokens to generate before stopping.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frequency_penalty: Option<f32>,
-
-    /// An object describing metadata about the request.
-    /// Whether to incrementally stream the response using server-sent events.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub logprobs: Option<bool>,
 
     /// The maximum number of tokens that can be generated in the chat completion.
     ///
