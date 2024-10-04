@@ -288,16 +288,8 @@ pub fn parse_args(mut args: Args, config: Config) -> Result<(Args, Config)> {
             if args.temperature.is_none() {
                 args.temperature = p.temperature;
             }
-            if args.conversation.len() == 0
-                || args.conversation.first().unwrap().role != ConversationRole::System
-            {
-                args.conversation.insert(
-                    0,
-                    ConversationMessage {
-                        role: ConversationRole::System,
-                        content: p.system.clone().unwrap_or_default(),
-                    },
-                );
+            if args.system.is_none() {
+                args.system = p.system;
             }
             if args.max_tokens.is_none() {
                 args.max_tokens = p.max_tokens;
@@ -351,8 +343,11 @@ fn get_latest_toml_file(cache_dir: &str) -> Result<Option<String>> {
 /// Combines the existing arguments with the ones found on the cache file.
 pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
     if args.from.is_none() && !args.from_last {
+        log::info!("No merging of cached args necessary");
         return Ok(args);
     }
+
+    log::info!("Merging args with cached args");
 
     let cache_dir = format!(
         "{}/cache",
@@ -1012,12 +1007,17 @@ pub fn list(args: Args) -> Result<()> {
                         .rev()
                         .find(|m| m.role == ConversationRole::Assistant)
                         .unwrap_or(args.conversation.first().expect("No messages"));
+                    // Get the first non-empty line inside `message.content` or `Empty` if there
+                    // are none
                     message
                         .content
                         .clone()
                         .split("\n")
-                        .next()
-                        .unwrap()
+                        .into_iter()
+                        .filter(|s| !s.is_empty() && !s.starts_with("```"))
+                        .collect::<Vec<_>>()
+                        .first()
+                        .unwrap_or(&"Empty assistant message")
                         .to_string()
                 }
                 .chars()

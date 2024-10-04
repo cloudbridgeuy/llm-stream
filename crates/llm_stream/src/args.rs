@@ -269,12 +269,12 @@ pub struct Args {
 
     /// Print the list of configured presets.
     #[clap(long)]
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, default)]
     pub presets: bool,
 
     /// Print the list of configured templates.
     #[clap(long)]
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, default)]
     pub templates: bool,
 
     /// Don't use colors to print the output.
