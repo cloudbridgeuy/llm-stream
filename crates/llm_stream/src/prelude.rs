@@ -117,13 +117,25 @@ pub async fn handle_stream(
                 .to_string(),
         });
 
-        let cache_file = format!(
-            "{}/cache/{}.toml",
-            args.config_dir
-                .clone()
-                .unwrap_or("~/.config/llm-stream".to_string()),
-            id
-        );
+        let config_dir = args
+            .config_dir
+            .clone()
+            .unwrap_or("~/.config/llm-stream".to_string());
+        let cache_file = format!("{}/cache/{}.toml", config_dir, id);
+
+        if args.max_history_size > 0 {
+            // Keep only the last `max_history_size` elements of args.conversation.
+            args.conversation = args
+                .conversation
+                .into_iter()
+                .rev()
+                // Convert to usize
+                .take(args.max_history_size.try_into().unwrap())
+                .collect::<Vec<ConversationMessage>>()
+                .into_iter()
+                .rev()
+                .collect();
+        }
 
         let cache_toml = toml::to_string(&args)?;
 
@@ -365,7 +377,8 @@ pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
     let cache_file = format!("{}/{}.toml", cache_dir, id);
 
     if !std::path::Path::new(&cache_file).exists() {
-        return Err(Error::CacheNotFound);
+        log::info!("Cache file not found: {}", &cache_file);
+        return Ok(args);
     }
 
     let cache_args = toml::from_str::<Args>(&std::fs::read_to_string(&cache_file)?)?;

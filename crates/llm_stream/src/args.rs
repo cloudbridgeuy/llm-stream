@@ -281,4 +281,9 @@ pub struct Args {
     #[clap(long)]
     #[serde(skip_serializing, default)]
     pub no_color: bool,
+
+    /// Max history size.
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub max_history_size: u32,
 }
