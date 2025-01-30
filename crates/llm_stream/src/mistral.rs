@@ -71,6 +71,14 @@ pub async fn run(mut args: Args) -> Result<()> {
         body.messages.insert(0, system_message);
     }
 
+    // Ensure there are no duplicated messages.
+    body.messages = body.messages.into_iter().fold(vec![], |mut acc, message| {
+        if !acc.iter().any(|m| m.content == message.content) {
+            acc.push(message);
+        }
+        acc
+    });
+
     body.temperature = args.temperature;
     body.top_p = args.top_p;
     if let Some(max_tokens) = args.max_tokens {

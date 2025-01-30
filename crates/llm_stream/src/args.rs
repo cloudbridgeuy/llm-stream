@@ -285,5 +285,5 @@ pub struct Args {
     /// Max history size.
     #[clap(long)]
     #[serde(skip_serializing, default)]
-    pub max_history_size: u32,
+    pub max_history_size: Option<u32>,
 }

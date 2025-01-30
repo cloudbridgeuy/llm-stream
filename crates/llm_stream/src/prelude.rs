@@ -52,14 +52,14 @@ pub async fn handle_stream(
                     crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
                 }
 
+                accumulated_content_bytes.extend_from_slice(text.as_bytes());
+
                 if !is_terminal {
                     // If not a terminal, print each instance of `text` directly to `stdout`
                     print!("{}", text);
                     std::io::stdout().flush()?;
                     continue;
                 }
-
-                accumulated_content_bytes.extend_from_slice(text.as_bytes());
 
                 let output = crate::printer::CustomPrinter::new(&language, theme.as_deref())?
                     .input_from_bytes(&accumulated_content_bytes)
@@ -117,32 +117,55 @@ pub async fn handle_stream(
                 .to_string(),
         });
 
+        // log the `args.conversation` to `stdout`.
+        log::info!("Conversation: {:#?}", &args.conversation);
+
         let config_dir = args
             .config_dir
             .clone()
             .unwrap_or("~/.config/llm-stream".to_string());
         let cache_file = format!("{}/cache/{}.toml", config_dir, id);
 
-        if args.max_history_size > 0 {
+        if let Some(max_history_size) = args.max_history_size {
+            // If there's a message in the conversation of role `System` take it and store it in
+            // a variable.
+            let system_message = args
+                .conversation
+                .iter()
+                .find(|m| m.role == ConversationRole::System)
+                .cloned();
+
+            if system_message.is_some() {
+                // Remove the `System` message from the conversation.
+                args.conversation
+                    .retain(|m| m.role != ConversationRole::System);
+            }
             // Keep only the last `max_history_size` elements of args.conversation.
             args.conversation = args
                 .conversation
                 .into_iter()
                 .rev()
                 // Convert to usize
-                .take(args.max_history_size.try_into().unwrap())
+                .take(max_history_size.try_into().unwrap())
                 .collect::<Vec<ConversationMessage>>()
                 .into_iter()
                 .rev()
                 .collect();
+
+            // Add back the system message if it exists as the first message.
+            if let Some(message) = system_message {
+                args.conversation.insert(0, message);
+            }
         }
 
         let cache_toml = toml::to_string(&args)?;
 
+        log::info!("Cache file: {}", &cache_file);
         std::fs::write(&cache_file, cache_toml)?;
 
         eprintln!("\n\nCache file: {}", &cache_file);
     }
+
     Ok(())
 }
 

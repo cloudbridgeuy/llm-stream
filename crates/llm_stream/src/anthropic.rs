@@ -66,6 +66,14 @@ pub async fn run(mut args: Args) -> Result<()> {
         args.max_tokens.unwrap_or(4096),
     );
 
+    // Ensure there are no duplicated messages.
+    body.messages = body.messages.into_iter().fold(vec![], |mut acc, message| {
+        if !acc.iter().any(|m| m.content == message.content) {
+            acc.push(message);
+        }
+        acc
+    });
+
     body.system = args.system.take();
     body.temperature = args.temperature;
     body.top_p = args.top_p;

@@ -54,6 +54,13 @@ pub async fn run(mut args: Args) -> Result<()> {
         body.messages.insert(0, system_message);
     }
 
+    // Ensure there are no duplicated messages.
+    body.messages = body.messages.into_iter().fold(vec![], |mut acc, message| {
+        if !acc.iter().any(|m| m.content == message.content) {
+            acc.push(message);
+        }
+        acc
+    });
     body.options = Some(ollama::MessageBodyOptions {
         temperature: args.temperature,
         top_p: args.top_p,
