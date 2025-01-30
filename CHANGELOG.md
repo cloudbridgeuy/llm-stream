@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.5.0] - 2025-01-30
+
+### Added
+
+- Implement Jina API client and streaming functionality
+
+### Fixed
+
+- Add default attribute to serde skip_serializing fields
+
+### Removed
+
+- Remove duplicate messages in LLM service modules
+
+### Refactored
+
+- Make max_history_size optional and improve handling
+
+### Other
+
+- Bumped version
+
 ## [llm-stream/0.4.0] - 2024-10-04
 
 ### Added
