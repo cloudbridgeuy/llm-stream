@@ -262,6 +262,11 @@ pub struct Args {
     #[serde(skip_serializing, default)]
     pub show: bool,
 
+    /// Print the last message of the conversation defined in --from or --from-last to stdout
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub last: bool,
+
     /// Print the list of existing conversations.
     #[clap(long)]
     #[serde(skip_serializing, default)]

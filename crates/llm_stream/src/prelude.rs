@@ -1100,6 +1100,11 @@ pub fn list(args: Args) -> Result<()> {
 
 /// Prints the given conversation to stdout
 pub fn show(args: Args) -> Result<()> {
+    if args.last {
+        println!("{}", args.conversation.last().unwrap().content);
+        return Ok(());
+    }
+
     // Read the cache file from `args.config_dir/args.from`
     let cache_file = format!(
         "{}/cache/{}.toml",
