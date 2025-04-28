@@ -291,4 +291,10 @@ pub struct Args {
     #[clap(long)]
     #[serde(skip_serializing, default)]
     pub max_history_size: Option<u32>,
+
+    /// Open the text editor pointed by the $EDITOR environment variable, before running the
+    /// prompt.
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub editor: bool,
 }

@@ -111,6 +111,8 @@ impl MessageBody {
 pub struct ChatCompletionChunkChoiceDelta {
     /// The contents of the chunk message.
     content: Option<String>,
+    /// The reasoning contents, if they exist.
+    reasoning_content: Option<String>,
 }
 
 /// Represents a content choice of a streamed chunk of a chat completion response returned by model, based on the provided input.
@@ -192,25 +194,35 @@ impl Client {
             )
             .build();
 
-        let stream = Box::pin(client.stream())
-            .map_err(Error::from)
-            .map_ok(|event| match event {
-                SSE::Connected(_) => String::default(),
-                SSE::Event(ev) => match serde_json::from_str::<ChatCompletionChunk>(&ev.data) {
-                    Ok(mut chunk) => {
-                        if chunk.choices.is_empty() {
-                            String::default()
-                        } else {
-                            chunk.choices[0].delta.content.take().unwrap_or_default()
+        let mut reasoning_accumulation = String::new();
+
+        let stream =
+            Box::pin(client.stream())
+                .map_err(Error::from)
+                .map_ok(move |event| match event {
+                    SSE::Connected(_) => String::default(),
+                    SSE::Event(ev) => match serde_json::from_str::<ChatCompletionChunk>(&ev.data) {
+                        Ok(mut chunk) => {
+                            if chunk.choices.is_empty() {
+                                String::default()
+                            } else {
+                                if let Some(ref content) = chunk.choices[0].delta.reasoning_content
+                                {
+                                    reasoning_accumulation.push_str(content);
+                                } else if !reasoning_accumulation.is_empty() {
+                                    eprintln!("{}", reasoning_accumulation);
+                                    reasoning_accumulation.clear();
+                                }
+                                chunk.choices[0].delta.content.take().unwrap_or_default()
+                            }
                         }
+                        Err(_) => String::default(),
+                    },
+                    SSE::Comment(comment) => {
+                        log::debug!("Comment: {:#?}", comment);
+                        String::default()
                     }
-                    Err(_) => String::default(),
-                },
-                SSE::Comment(comment) => {
-                    log::debug!("Comment: {:#?}", comment);
-                    String::default()
-                }
-            });
+                });
 
         Ok(stream)
     }

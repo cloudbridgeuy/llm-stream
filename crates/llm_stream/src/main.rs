@@ -1,4 +1,7 @@
 use clap::Parser;
+use std::io::{Read, Write};
+use std::process::Command;
+use tempfile::tempdir;
 
 mod anthropic;
 mod args;
@@ -98,9 +101,16 @@ async fn main() -> Result<()> {
         return show(args);
     }
 
-    let args = merge_args_and_config(args, config)?;
+    let mut args = merge_args_and_config(args, config)?;
 
     log::info!("merged args and config: {:#?}", args);
+
+    if !args.conversation.is_empty() {
+        let last = args.conversation[args.conversation.len() - 1].clone();
+        if last.content.is_empty() {
+            args.conversation.pop();
+        }
+    }
 
     if args.print_conversation {
         let json = serde_json::to_string_pretty(&args.conversation)?;
@@ -110,6 +120,33 @@ async fn main() -> Result<()> {
 
     if args.dry_run {
         return Ok(());
+    }
+
+    if args.editor && std::env::var("EDITOR").is_ok() {
+        let editor = std::env::var("EDITOR").unwrap();
+
+        // Create a directory inside of `env::temp_dir()`.
+        let dir = tempdir()?;
+
+        let file_path = dir.path().join("prompt.toml");
+        let mut file = std::fs::File::create(&file_path)?;
+        let cache_toml = toml::to_string(&args)?;
+
+        writeln!(file, "{}", &cache_toml)?;
+
+        Command::new(editor)
+            .arg(&file_path)
+            .status()
+            .expect("Something failed while editing the prompt");
+
+        let mut editable = String::new();
+        std::fs::File::open(file_path)
+            .expect("Could not open file")
+            .read_to_string(&mut editable)?;
+
+        let edited_args: Args = toml::from_str(&editable)?;
+
+        args.conversation = edited_args.conversation;
     }
 
     match args.api {
