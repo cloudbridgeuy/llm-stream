@@ -157,6 +157,7 @@ async fn main() -> Result<()> {
         Some(Api::MistralFim) => mistral_fim::run(args).await,
         Some(Api::Ollama) => ollama::run(args).await,
         Some(Api::Groq) => groq::run(args).await,
+        Some(Api::DeepSeek) => openai::reason(args).await,
         None => Err(Error::ApiNotSpecified),
     }
 }

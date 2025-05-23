@@ -164,7 +164,85 @@ impl Client {
     }
 }
 
+pub enum ReasonEvent {
+    Reasoning(String),
+    Delta(String),
+    Empty,
+    Connected,
+    Comment(String),
+    Err(Error),
+}
+
+impl std::fmt::Display for ReasonEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReasonEvent::Reasoning(content) => write!(f, "Reasoning: {}", content),
+            ReasonEvent::Delta(content) => write!(f, "Delta: {}", content),
+            ReasonEvent::Empty => write!(f, "Empty"),
+            ReasonEvent::Connected => write!(f, "Connected"),
+            ReasonEvent::Comment(comment) => write!(f, "Comment: {}", comment),
+            ReasonEvent::Err(e) => write!(f, "Error: {}", e),
+        }
+    }
+}
+
 impl Client {
+    pub fn reason<'a>(
+        &'a self,
+        message_body: &'a MessageBody,
+    ) -> Result<impl Stream<Item = Result<ReasonEvent, Error>> + 'a, Error> {
+        log::debug!("message_body: {:#?}", message_body);
+
+        let request_body = match serde_json::to_value(message_body) {
+            Ok(body) => body,
+            Err(e) => return Err(Error::Serde(e)),
+        };
+        log::debug!("request_body: {:#?}", request_body);
+
+        let authorization: &str = &format!("Bearer {}", self.auth.api_key);
+
+        let client = ClientBuilder::for_url(&(self.api_url.clone() + CHAT_API))?
+            .header("content-type", "application/json")?
+            .header("authorization", authorization)?
+            .method("POST".into())
+            .body(request_body.to_string())
+            .reconnect(
+                ReconnectOptions::reconnect(true)
+                    .retry_initial(false)
+                    .delay(Duration::from_secs(1))
+                    .backoff_factor(2)
+                    .delay_max(Duration::from_secs(60))
+                    .build(),
+            )
+            .build();
+
+        let stream =
+            Box::pin(client.stream())
+                .map_err(Error::from)
+                .map_ok(move |event| match event {
+                    SSE::Connected(_) => ReasonEvent::Connected,
+                    SSE::Event(ev) => match serde_json::from_str::<ChatCompletionChunk>(&ev.data) {
+                        Ok(mut chunk) => {
+                            if chunk.choices.is_empty() {
+                                ReasonEvent::Empty
+                            } else if let Some(ref content) =
+                                chunk.choices[0].delta.reasoning_content
+                            {
+                                ReasonEvent::Reasoning(content.clone())
+                            } else {
+                                ReasonEvent::Delta(
+                                    chunk.choices[0].delta.content.take().unwrap_or_default(),
+                                )
+                            }
+                        }
+                        Err(e) => ReasonEvent::Err(Error::Serde(e)),
+                    },
+                    SSE::Comment(comment) => ReasonEvent::Comment(comment),
+                });
+
+        Ok(stream)
+    }
+
     pub fn delta<'a>(
         &'a self,
         message_body: &'a MessageBody,

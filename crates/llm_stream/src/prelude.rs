@@ -1201,3 +1201,178 @@ pub fn templates(lines: Vec<TemplateLine>, no_color: bool) -> Result<()> {
 
     Ok(())
 }
+
+/// Handles a reasoning stream of text from the LLM and prints it to the terminal.
+pub async fn handle_reason_stream(
+    mut stream: impl Stream<
+            Item = std::result::Result<llm_stream::openai::ReasonEvent, llm_stream::error::Error>,
+        > + std::marker::Unpin,
+    mut args: Args,
+) -> Result<()> {
+    let mut previous_output = String::new();
+    let mut accumulated_content_bytes: Vec<u8> = Vec::new();
+
+    let is_terminal = atty::is(atty::Stream::Stdout);
+
+    let mut sp = if args.quiet.is_none() || (args.quiet == Some(false) && is_terminal) {
+        Some(spinners::Spinner::new(
+            spinners::Spinners::OrangeBluePulse,
+            "Loading...".into(),
+        ))
+    } else {
+        None
+    };
+
+    let language = args.language.clone().unwrap_or("markdown".to_string());
+    let theme = Some(args.theme.clone().unwrap_or("ansi".to_string()));
+    let mut reasoning = true;
+
+    loop {
+        let result = stream.try_next().await;
+
+        match result {
+            Ok(Some(event)) => match event {
+                llm_stream::openai::ReasonEvent::Delta(text) => {
+                    if is_terminal && sp.is_some() {
+                        // TODO: Find a better way to clean the spinner from the terminal.
+                        sp.take().unwrap().stop();
+                        std::io::stdout().flush()?;
+                        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                        print!("                      ");
+                        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                    }
+
+                    if reasoning {
+                        print!("\n\n---\n\n");
+                        reasoning = false;
+                    }
+
+                    accumulated_content_bytes.extend_from_slice(text.as_bytes());
+
+                    if !is_terminal {
+                        // If not a terminal, print each instance of `text` directly to `stdout`
+                        print!("{}", text);
+                        std::io::stdout().flush()?;
+                        continue;
+                    }
+
+                    let output = crate::printer::CustomPrinter::new(&language, theme.as_deref())?
+                        .input_from_bytes(&accumulated_content_bytes)
+                        .print()?;
+
+                    let unprinted_lines = output
+                        .lines()
+                        .skip(if previous_output.lines().count() == 0 {
+                            0
+                        } else {
+                            previous_output.lines().count() - 1
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                    print!("{unprinted_lines}");
+                    std::io::stdout().flush()?;
+
+                    // Update the previous output
+                    previous_output = output;
+                }
+                llm_stream::openai::ReasonEvent::Reasoning(text) => {
+                    if is_terminal && sp.is_some() {
+                        // TODO: Find a better way to clean the spinner from the terminal.
+                        sp.take().unwrap().stop();
+                        std::io::stdout().flush()?;
+                        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                        print!("                      ");
+                        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                    }
+                    eprint!("{}", text);
+                }
+                _ => log::debug!("{}", event),
+            },
+            Ok(None) => break,
+            Err(llm_stream::error::Error::EventsourceClient(
+                llm_stream::error::EventsourceError::Eof,
+            )) => break,
+            Err(e) => {
+                if is_terminal && sp.is_some() {
+                    // TODO: Find a better way to clean the spinner from the terminal.
+                    sp.take().unwrap().stop();
+                    std::io::stdout().flush()?;
+                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                    print!("                      ");
+                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                }
+                return Err(Error::from(e));
+            }
+        };
+    }
+
+    if !args.no_cache {
+        let id = if args.fork {
+            if args.from.is_some() {
+                args.parent = args.from.clone();
+            }
+            xid::new().to_string()
+        } else {
+            args.from.clone().unwrap_or(xid::new().to_string())
+        };
+
+        args.conversation.push(ConversationMessage {
+            role: ConversationRole::Assistant,
+            content: String::from_utf8_lossy(&accumulated_content_bytes)
+                .trim()
+                .to_string(),
+        });
+
+        // log the `args.conversation` to `stdout`.
+        log::info!("Conversation: {:#?}", &args.conversation);
+
+        let config_dir = args
+            .config_dir
+            .clone()
+            .unwrap_or("~/.config/llm-stream".to_string());
+        let cache_file = format!("{}/cache/{}.toml", config_dir, id);
+
+        if let Some(max_history_size) = args.max_history_size {
+            // If there's a message in the conversation of role `System` take it and store it in
+            // a variable.
+            let system_message = args
+                .conversation
+                .iter()
+                .find(|m| m.role == ConversationRole::System)
+                .cloned();
+
+            if system_message.is_some() {
+                // Remove the `System` message from the conversation.
+                args.conversation
+                    .retain(|m| m.role != ConversationRole::System);
+            }
+            // Keep only the last `max_history_size` elements of args.conversation.
+            args.conversation = args
+                .conversation
+                .into_iter()
+                .rev()
+                // Convert to usize
+                .take(max_history_size.try_into().unwrap())
+                .collect::<Vec<ConversationMessage>>()
+                .into_iter()
+                .rev()
+                .collect();
+
+            // Add back the system message if it exists as the first message.
+            if let Some(message) = system_message {
+                args.conversation.insert(0, message);
+            }
+        }
+
+        let cache_toml = toml::to_string(&args)?;
+
+        log::info!("Cache file: {}", &cache_file);
+        std::fs::write(&cache_file, cache_toml)?;
+
+        eprintln!("\n\nCache file: {}", &cache_file);
+    }
+
+    Ok(())
+}
