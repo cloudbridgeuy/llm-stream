@@ -1,15 +1,15 @@
 #[derive(thiserror::Error)]
 pub enum Error {
+    #[error("utf8 error")]
+    Utf8(#[from] std::str::Utf8Error),
     #[error("io error")]
     Io(#[from] std::io::Error),
-    #[error("unable to stream the api")]
-    EsStream(#[from] llm_stream::error::Error),
     #[error("unable to get value from environment variable")]
     EnvVar(#[from] std::env::VarError),
     #[error("invalid api")]
     InvalidAPI,
-    #[error("unable to print with bat")]
-    Bat(#[from] bat::error::Error),
+    // #[error("unable to print with bat")]
+    // Bat(#[from] bat::error::Error),
     #[error("unable to coherce to u32")]
     TryFrom(#[from] std::num::TryFromIntError),
     #[error("api not specified")]
@@ -32,6 +32,8 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error("file or stdin error")]
     Stdin(#[from] clap_stdin::StdinError),
+    #[error("unable to stream the api")]
+    EsStream(#[from] llm_stream::error::Error),
 }
 
 pub(crate) fn format_error(

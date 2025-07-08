@@ -156,7 +156,7 @@ pub struct Args {
     pub quiet: Option<bool>,
 
     /// Language to use for syntax highlight
-    #[clap(long, default_value = "markdown")]
+    #[clap(long, default_value = "md")]
     pub language: Option<String>,
 
     /// Add a system message to the request.
@@ -191,7 +191,7 @@ pub struct Args {
     pub conversation: Conversation,
 
     /// Language to use for syntax highlight
-    #[clap(long, default_value = "ansi")]
+    #[clap(long, default_value = "base16-ocean.dark")]
     #[serde(skip_serializing)]
     pub theme: Option<String>,
 

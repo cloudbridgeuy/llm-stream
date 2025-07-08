@@ -1,8 +1,1 @@
-{
-  "rust-analyzer.files.excludeDirs": [
-    "./lib/bat",
-    "./lib/bat/assets",
-    "./lib/bat/tests",
-    "./lib/bat/src"
-  ]
-}
+{}

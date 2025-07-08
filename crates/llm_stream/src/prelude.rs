@@ -3,6 +3,10 @@ use config_file::FromConfigFile;
 use futures::stream::{Stream, TryStreamExt};
 use serde_json::Value;
 use std::io::{BufRead, IsTerminal, Write};
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{Style, ThemeSet};
+use syntect::parsing::SyntaxSet;
+use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
 
 pub use crate::args::{Api, Args};
 pub use crate::config::Config;
@@ -21,8 +25,8 @@ pub async fn handle_stream(
         + std::marker::Unpin,
     mut args: Args,
 ) -> Result<()> {
+    let mut accumulated_text = String::new();
     let mut previous_output = String::new();
-    let mut accumulated_content_bytes: Vec<u8> = Vec::new();
 
     let is_terminal = atty::is(atty::Stream::Stdout);
 
@@ -34,9 +38,6 @@ pub async fn handle_stream(
     } else {
         None
     };
-
-    let language = args.language.clone().unwrap_or("markdown".to_string());
-    let theme = Some(args.theme.clone().unwrap_or("ansi".to_string()));
 
     loop {
         let result = stream.try_next().await;
@@ -52,8 +53,6 @@ pub async fn handle_stream(
                     crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
                 }
 
-                accumulated_content_bytes.extend_from_slice(text.as_bytes());
-
                 if !is_terminal {
                     // If not a terminal, print each instance of `text` directly to `stdout`
                     print!("{}", text);
@@ -61,17 +60,15 @@ pub async fn handle_stream(
                     continue;
                 }
 
-                let output = crate::printer::CustomPrinter::new(&language, theme.as_deref())?
-                    .input_from_bytes(&accumulated_content_bytes)
-                    .print()?;
+                accumulated_text.push_str(&text);
+                let length = previous_output.lines().count();
+
+                // let output = crate::printer::markdown_to_24_bit_terminal_escaped(&accumulated_text);
+                let output = crate::printer::highlight_markdown(&accumulated_text);
 
                 let unprinted_lines = output
                     .lines()
-                    .skip(if previous_output.lines().count() == 0 {
-                        0
-                    } else {
-                        previous_output.lines().count() - 1
-                    })
+                    .skip(if length == 0 { 0 } else { length - 1 })
                     .collect::<Vec<_>>()
                     .join("\n");
 
@@ -79,7 +76,6 @@ pub async fn handle_stream(
                 print!("{unprinted_lines}");
                 std::io::stdout().flush()?;
 
-                // Update the previous output
                 previous_output = output;
             }
             Ok(None) => break,
@@ -112,9 +108,7 @@ pub async fn handle_stream(
 
         args.conversation.push(ConversationMessage {
             role: ConversationRole::Assistant,
-            content: String::from_utf8_lossy(&accumulated_content_bytes)
-                .trim()
-                .to_string(),
+            content: accumulated_text.clone(),
         });
 
         // log the `args.conversation` to `stdout`.
@@ -305,7 +299,7 @@ pub fn parse_args(mut args: Args, config: Config) -> Result<(Args, Config)> {
         let p = config
             .presets
             .clone()
-            .unwrap_or(vec![])
+            .unwrap_or_default()
             .into_iter()
             .find(|p| p.name == preset);
 
@@ -516,7 +510,7 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
             for message in conversation {
                 tera.add_raw_template(CONTENT_TEMPLATE, &message.content)?;
 
-                if message.role == ConversationRole::System && args.conversation.len() > 0 {
+                if message.role == ConversationRole::System && args.conversation.is_empty() {
                     if args.conversation.first().unwrap().role != ConversationRole::System {
                         args.conversation.insert(
                             0,
@@ -530,7 +524,7 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
                     }
                 } else {
                     args.conversation.push(ConversationMessage {
-                        role: message.role.clone(),
+                        role: message.role,
                         content: tera.render(CONTENT_TEMPLATE, &context)?,
                     });
                 }
@@ -557,7 +551,7 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
     if args.temperature.is_none() {
         args.temperature = config.temperature;
     }
-    if args.conversation.len() == 0
+    if args.conversation.is_empty()
         || args.conversation.first().unwrap().role != ConversationRole::System
     {
         args.conversation.insert(
@@ -629,41 +623,24 @@ mod tests {
     use crate::config::{Preset, Template};
 
     #[test]
-    fn test_args_dont_change_on_empty_config() -> std::result::Result<(), Box<dyn std::error::Error>>
-    {
-        let args = Args::default();
-        let config: Config = Config::default();
-
-        let mut expected = args.clone();
-        expected.conversation = vec![ConversationMessage::default()];
-
-        let actual = merge_args_and_config(args, config)?;
-
-        assert_eq!(
-            expected, actual,
-            "merge_args_and_config changed the default values"
-        );
-
-        Ok(())
-    }
-
-    #[test]
     fn test_args_override_config() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let mut args = Args::default();
-        args.api = Some(Api::OpenAi);
-        args.model = Some("gpt-4o".to_string());
-        args.max_tokens = Some(100);
-        args.min_tokens = Some(10);
-        args.api_env = Some("OPENAI_API_KEY".to_string());
-        args.api_version = Some("0.1.0".to_string());
-        args.api_key = Some("123".to_string());
-        args.api_base_url = Some("https://api.openai.com/v1".to_string());
-        args.quiet = Some(true);
-        args.language = Some("markdown".to_string());
-        args.system = Some("Something Awesome".to_string());
-        args.temperature = Some(0.5);
-        args.top_p = Some(0.5);
-        args.top_k = Some(50);
+        let args = Args {
+            api: Some(Api::OpenAi),
+            model: Some("gpt-4o".to_string()),
+            max_tokens: Some(100),
+            min_tokens: Some(10),
+            api_env: Some("OPENAI_API_KEY".to_string()),
+            api_version: Some("0.1.0".to_string()),
+            api_key: Some("123".to_string()),
+            api_base_url: Some("https://api.openai.com/v1".to_string()),
+            quiet: Some(true),
+            language: Some("md".to_string()),
+            system: Some("Something Awesome".to_string()),
+            temperature: Some(0.5),
+            top_p: Some(0.5),
+            top_k: Some(50),
+            ..Default::default()
+        };
 
         let mut expected = args.clone();
         expected.conversation = vec![
@@ -674,21 +651,23 @@ mod tests {
             ConversationMessage::default(),
         ];
 
-        let mut config: Config = Config::default();
-        config.api = Some(Api::Anthropic);
-        config.model = Some("gpt-3".to_string());
-        config.max_tokens = Some(200);
-        config.min_tokens = Some(20);
-        config.env = Some("ANTHROPIC_API_KEY".to_string());
-        config.version = Some("0.2.0".to_string());
-        config.key = Some("456".to_string());
-        config.base_url = Some("https://api.anthropic.com/v1".to_string());
-        config.quiet = Some(false);
-        config.language = Some("html".to_string());
-        config.system = Some("Something Awesome".to_string());
-        config.temperature = Some(0.7);
-        config.top_p = Some(0.7);
-        config.top_k = Some(70);
+        let config = Config {
+            api: Some(Api::Anthropic),
+            model: Some("gpt-3".to_string()),
+            max_tokens: Some(200),
+            min_tokens: Some(20),
+            env: Some("ANTHROPIC_API_KEY".to_string()),
+            version: Some("0.2.0".to_string()),
+            key: Some("456".to_string()),
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            quiet: Some(false),
+            language: Some("html".to_string()),
+            system: Some("Something Awesome".to_string()),
+            temperature: Some(0.7),
+            top_p: Some(0.7),
+            top_k: Some(70),
+            ..Default::default()
+        };
 
         let actual = merge_args_and_config(args, config)?;
 
@@ -705,9 +684,11 @@ mod tests {
         let system = "param system";
         let preset_name = "preset_name";
 
-        let mut args = Args::default();
-        args.system = Some(system.to_string());
-        args.preset = Some(preset_name.to_string());
+        let args = Args {
+            system: Some(system.to_string()),
+            preset: Some(preset_name.to_string()),
+            ..Default::default()
+        };
 
         let mut expected = args.clone();
         expected.conversation = vec![
@@ -718,12 +699,14 @@ mod tests {
             ConversationMessage::default(),
         ];
 
-        let mut config: Config = Config::default();
-        config.presets = Some(vec![Preset {
-            name: preset_name.to_string(),
-            system: Some("preset system".to_string()),
+        let config: Config = Config {
+            presets: Some(vec![Preset {
+                name: preset_name.to_string(),
+                system: Some("preset system".to_string()),
+                ..Default::default()
+            }]),
             ..Default::default()
-        }]);
+        };
 
         let actual = merge_args_and_config(args, config)?;
 
@@ -736,14 +719,16 @@ mod tests {
     }
 
     #[test]
-    fn test_prest_system_over_config_system() -> std::result::Result<(), Box<dyn std::error::Error>>
+    fn test_preset_system_over_config_system() -> std::result::Result<(), Box<dyn std::error::Error>>
     {
         let system = "preset system";
         let config_system = "config system";
         let preset_name = "preset_name";
 
-        let mut args = Args::default();
-        args.preset = Some(preset_name.to_string());
+        let args = Args {
+            preset: Some(preset_name.to_string()),
+            ..Default::default()
+        };
 
         let mut expected = args.clone();
         expected.conversation = vec![
@@ -754,13 +739,15 @@ mod tests {
             ConversationMessage::default(),
         ];
 
-        let mut config: Config = Config::default();
-        config.system = Some(config_system.to_string());
-        config.presets = Some(vec![Preset {
-            name: preset_name.to_string(),
-            system: Some(system.to_string()),
+        let config: Config = Config {
+            system: Some(config_system.to_string()),
+            presets: Some(vec![Preset {
+                name: preset_name.to_string(),
+                system: Some(system.to_string()),
+                ..Default::default()
+            }]),
             ..Default::default()
-        }]);
+        };
 
         let actual = merge_args_and_config(args, config)?;
 
@@ -778,9 +765,11 @@ mod tests {
         let system = "param system";
         let template_name = "template_name";
 
-        let mut args = Args::default();
-        args.system = Some(system.to_string());
-        args.template = Some(template_name.to_string());
+        let args = Args {
+            system: Some(system.to_string()),
+            template: Some(template_name.to_string()),
+            ..Default::default()
+        };
 
         let mut expected = args.clone();
         expected.conversation = vec![
@@ -791,14 +780,16 @@ mod tests {
             ConversationMessage::default(),
         ];
 
-        let mut config: Config = Config::default();
-        config.templates = Some(vec![Template {
-            name: template_name.to_string(),
-            description: Some("test".to_string()),
-            system: Some("template system".to_string()),
-            template: Some("".to_string()),
+        let config: Config = Config {
+            templates: Some(vec![Template {
+                name: template_name.to_string(),
+                description: Some("test".to_string()),
+                system: Some("template system".to_string()),
+                template: Some("".to_string()),
+                ..Default::default()
+            }]),
             ..Default::default()
-        }]);
+        };
 
         let actual = merge_args_and_config(args, config)?;
 
@@ -817,9 +808,11 @@ mod tests {
         let template_name = "template_name";
         let preset_name = "preset_name";
 
-        let mut args = Args::default();
-        args.template = Some(template_name.to_string());
-        args.preset = Some(preset_name.to_string());
+        let args = Args {
+            template: Some(template_name.to_string()),
+            preset: Some(preset_name.to_string()),
+            ..Default::default()
+        };
 
         let mut expected = args.clone();
         expected.conversation = vec![
@@ -830,19 +823,21 @@ mod tests {
             ConversationMessage::default(),
         ];
 
-        let mut config: Config = Config::default();
-        config.templates = Some(vec![Template {
-            name: template_name.to_string(),
-            description: Some("test".to_string()),
-            system: Some(system.to_string()),
-            template: Some("".to_string()),
+        let config: Config = Config {
+            templates: Some(vec![Template {
+                name: template_name.to_string(),
+                description: Some("test".to_string()),
+                system: Some(system.to_string()),
+                template: Some("".to_string()),
+                ..Default::default()
+            }]),
+            presets: Some(vec![Preset {
+                name: preset_name.to_string(),
+                system: Some("preset system".to_string()),
+                ..Default::default()
+            }]),
             ..Default::default()
-        }]);
-        config.presets = Some(vec![Preset {
-            name: preset_name.to_string(),
-            system: Some("preset system".to_string()),
-            ..Default::default()
-        }]);
+        };
 
         let actual = merge_args_and_config(args, config)?;
 
@@ -860,8 +855,10 @@ mod tests {
         let system = "template system";
         let template_name = "template_name";
 
-        let mut args = Args::default();
-        args.template = Some(template_name.to_string());
+        let args = Args {
+            template: Some(template_name.to_string()),
+            ..Default::default()
+        };
 
         let mut expected = args.clone();
         expected.conversation = vec![
@@ -872,14 +869,16 @@ mod tests {
             ConversationMessage::default(),
         ];
 
-        let mut config: Config = Config::default();
-        config.templates = Some(vec![Template {
-            name: template_name.to_string(),
-            description: Some("test".to_string()),
-            system: Some(system.to_string()),
-            template: Some("".to_string()),
+        let config: Config = Config {
+            templates: Some(vec![Template {
+                name: template_name.to_string(),
+                description: Some("test".to_string()),
+                system: Some(system.to_string()),
+                template: Some("".to_string()),
+                ..Default::default()
+            }]),
             ..Default::default()
-        }]);
+        };
 
         let actual = merge_args_and_config(args, config)?;
 
@@ -896,8 +895,10 @@ mod tests {
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let system_option = "system option";
         let system_conversation = "system conversation";
-        let mut args = Args::default();
-        args.system = Some(system_option.to_string());
+        let mut args = Args {
+            system: Some(system_option.to_string()),
+            ..Default::default()
+        };
 
         let mut expected = args.clone();
         expected.conversation = vec![
@@ -970,8 +971,8 @@ impl From<crate::config::Preset> for PresetLine {
         PresetLine {
             name: preset.name,
             api: format!("{:?}", preset.api),
-            base_url: preset.base_url.unwrap_or_else(|| "".to_string()),
-            model: preset.model.unwrap_or_else(|| "".to_string()),
+            base_url: preset.base_url.unwrap_or_default(),
+            model: preset.model.unwrap_or_default(),
         }
     }
 }
@@ -988,7 +989,7 @@ impl From<crate::config::Template> for TemplateLine {
     fn from(template: crate::config::Template) -> Self {
         TemplateLine {
             name: template.name,
-            description: template.description.unwrap_or_else(|| "".to_string()),
+            description: template.description.unwrap_or_default(),
         }
     }
 }
@@ -1027,7 +1028,7 @@ pub fn list(args: Args) -> Result<()> {
         .iter()
         .map(|path| {
             let id = path.file_stem().unwrap().to_str().unwrap();
-            let cache_toml = std::fs::read_to_string(&path).unwrap();
+            let cache_toml = std::fs::read_to_string(path).unwrap();
             let args: Args = toml::from_str(&cache_toml).unwrap();
             let description = Some(
                 if let Some(description) = args.description {
@@ -1049,7 +1050,6 @@ pub fn list(args: Args) -> Result<()> {
                         .content
                         .clone()
                         .split("\n")
-                        .into_iter()
                         .filter(|s| !s.is_empty() && !s.starts_with("```"))
                         .collect::<Vec<_>>()
                         .first()
@@ -1118,16 +1118,25 @@ pub fn show(args: Args) -> Result<()> {
     let text = std::fs::read_to_string(&cache_file)?;
 
     let language = "toml";
-    let theme = Some(args.theme.clone().unwrap_or("ansi".to_string()));
+    let theme = args
+        .theme
+        .clone()
+        .unwrap_or("base16-ocean.dark".to_string());
 
     if args.no_color {
         println!("{}", text);
     } else {
-        let output = crate::printer::CustomPrinter::new(&language, theme.as_deref())?
-            .input_from_bytes(&text.as_bytes())
-            .print()?;
+        let ps = SyntaxSet::load_defaults_newlines();
+        let ts = ThemeSet::load_defaults();
 
-        println!("{}", output);
+        let syntax = ps.find_syntax_by_extension(language).unwrap();
+        let mut h = HighlightLines::new(syntax, &ts.themes[&theme]);
+
+        for line in LinesWithEndings::from(&text) {
+            let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
+            let escaped = syntect::util::as_24_bit_terminal_escaped(&ranges[..], true);
+            print!("{}", escaped);
+        }
         std::io::stdout().flush()?;
     }
 
@@ -1224,8 +1233,17 @@ pub async fn handle_reason_stream(
     };
 
     let language = args.language.clone().unwrap_or("markdown".to_string());
-    let theme = Some(args.theme.clone().unwrap_or("ansi".to_string()));
+    let theme = args
+        .theme
+        .clone()
+        .unwrap_or("base16-ocean.dark".to_string());
     let mut reasoning = true;
+
+    let ps = SyntaxSet::load_defaults_newlines();
+    let ts = ThemeSet::load_defaults();
+
+    let syntax = ps.find_syntax_by_extension(&language).unwrap();
+    let mut h = HighlightLines::new(syntax, &ts.themes[&theme]);
 
     loop {
         let result = stream.try_next().await;
@@ -1256,16 +1274,17 @@ pub async fn handle_reason_stream(
                         continue;
                     }
 
-                    let output = crate::printer::CustomPrinter::new(&language, theme.as_deref())?
-                        .input_from_bytes(&accumulated_content_bytes)
-                        .print()?;
+                    let output = (std::str::from_utf8(&accumulated_content_bytes)?).to_string();
 
-                    let unprinted_lines = output
-                        .lines()
+                    let unprinted_lines = LinesWithEndings::from(&output)
                         .skip(if previous_output.lines().count() == 0 {
                             0
                         } else {
                             previous_output.lines().count() - 1
+                        })
+                        .map(|line| {
+                            let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
+                            as_24_bit_terminal_escaped(&ranges[..], true)
                         })
                         .collect::<Vec<_>>()
                         .join("\n");

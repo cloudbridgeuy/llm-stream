@@ -108,9 +108,9 @@ fn default_false() -> Option<bool> {
 }
 
 fn default_language() -> Option<String> {
-    Some("markdown".to_string())
+    Some("md".to_string())
 }
 
 fn default_theme() -> Option<String> {
-    Some("ansi".to_string())
+    Some("base16-ocean.dark".to_string())
 }

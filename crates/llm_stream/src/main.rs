@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+#![allow(dead_code)]
 use clap::Parser;
 use std::io::{Read, Write};
 use std::process::Command;
