@@ -1,26 +1,40 @@
 # Changelog
 
-## [0.5.0] - 2025-07-10
+## [0.5.1] - 2025-07-08
+
+### Changed
+
+#### llm_stream
+
+- **refactor**: Embed theme data instead of loading from file path
+
+## [0.5.0] - 2025-07-08
 
 ### Added
 
-- Implement Jina API client and streaming functionality
+- **llm_stream**: DeepSeek API integration with reasoning support
+- **llm_stream**: Support for editing prompts in external editor
+- **llm_stream**: Support for displaying reasoning content from OpenAI responses
+- **llm_stream**: Centralized syntax highlighting with theme support
+- **llm_stream**: Nom-based markdown parser with text wrapping and improved highlighting
+- **llm_stream**: Tokyonight theme support in build script
+- **jina**: CLI tool for HTML to Markdown conversion using Jina AI API
+
+### Changed
+
+- **llm_stream**: Refactored syntax highlighting to use centralized printer module
+- **llm_stream**: Removed direct syntect dependencies from prelude
+- **llm_stream**: Simplified text accumulation logic in stream handlers
 
 ### Fixed
 
-- Add default attribute to serde skip_serializing fields
+- **llm_stream**: Prevent sending empty messages in conversation
 
 ### Removed
 
-- Remove duplicate messages in LLM service modules
-
-### Refactored
-
-- Make max_history_size optional and improve handling
-
-### Other
-
-- Bumped version
+- **llm_stream**: Language and theme configuration options
+- **build**: Bat dependency and related code cleanup
+- **llm_stream**: Syntax highlighting functionality and associated build script logic for theme asset management
 
 ## [llm-stream/0.4.0] - 2024-10-04
 
@@ -168,31 +182,3 @@
 #### Global
 
 - Initial project setup and configuration
-
-## [0.5.0] - 2025-07-08
-
-### Added
-
-- **llm_stream**: DeepSeek API integration with reasoning support
-- **llm_stream**: Support for editing prompts in external editor
-- **llm_stream**: Support for displaying reasoning content from OpenAI responses
-- **llm_stream**: Centralized syntax highlighting with theme support
-- **llm_stream**: Nom-based markdown parser with text wrapping and improved highlighting
-- **llm_stream**: Tokyonight theme support in build script
-- **jina**: CLI tool for HTML to Markdown conversion using Jina AI API
-
-### Changed
-
-- **llm_stream**: Refactored syntax highlighting to use centralized printer module
-- **llm_stream**: Removed direct syntect dependencies from prelude
-- **llm_stream**: Simplified text accumulation logic in stream handlers
-
-### Fixed
-
-- **llm_stream**: Prevent sending empty messages in conversation
-
-### Removed
-
-- **llm_stream**: Language and theme configuration options
-- **build**: Bat dependency and related code cleanup
-- **llm_stream**: Syntax highlighting functionality and associated build script logic for theme asset management
