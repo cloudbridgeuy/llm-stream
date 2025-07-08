@@ -17,9 +17,9 @@ use syntect::{
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 static THEME: LazyLock<Theme> = LazyLock::new(|| {
-    ThemeSet::get_theme("crates/llm_stream/assets/themes/tokyonight/tokyonight-storm.tmTheme")
+    let theme_data = include_str!("../assets/themes/tokyonight/tokyonight-storm.tmTheme");
+    ThemeSet::load_from_reader(&mut std::io::Cursor::new(theme_data))
         .unwrap()
-        .clone()
 });
 static MARKDOWN_SYNTAX: LazyLock<&SyntaxReference> =
     LazyLock::new(|| SYNTAX_SET.find_syntax_by_name("Markdown").unwrap());
