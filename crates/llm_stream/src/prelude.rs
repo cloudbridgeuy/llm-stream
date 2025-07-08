@@ -3,10 +3,6 @@ use config_file::FromConfigFile;
 use futures::stream::{Stream, TryStreamExt};
 use serde_json::Value;
 use std::io::{BufRead, IsTerminal, Write};
-use syntect::easy::HighlightLines;
-use syntect::highlighting::{Style, ThemeSet};
-use syntect::parsing::SyntaxSet;
-use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
 
 pub use crate::args::{Api, Args};
 pub use crate::config::Config;
@@ -63,7 +59,6 @@ pub async fn handle_stream(
                 accumulated_text.push_str(&text);
                 let length = previous_output.lines().count();
 
-                // let output = crate::printer::markdown_to_24_bit_terminal_escaped(&accumulated_text);
                 let output = crate::printer::highlight_markdown(&accumulated_text);
 
                 let unprinted_lines = output
@@ -1117,26 +1112,11 @@ pub fn show(args: Args) -> Result<()> {
     // Read the contents of cache_file
     let text = std::fs::read_to_string(&cache_file)?;
 
-    let language = "toml";
-    let theme = args
-        .theme
-        .clone()
-        .unwrap_or("base16-ocean.dark".to_string());
-
     if args.no_color {
         println!("{}", text);
     } else {
-        let ps = SyntaxSet::load_defaults_newlines();
-        let ts = ThemeSet::load_defaults();
-
-        let syntax = ps.find_syntax_by_extension(language).unwrap();
-        let mut h = HighlightLines::new(syntax, &ts.themes[&theme]);
-
-        for line in LinesWithEndings::from(&text) {
-            let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
-            let escaped = syntect::util::as_24_bit_terminal_escaped(&ranges[..], true);
-            print!("{}", escaped);
-        }
+        let output = crate::printer::highlight_markdown(&text);
+        println!("{}", output);
         std::io::stdout().flush()?;
     }
 
@@ -1218,8 +1198,8 @@ pub async fn handle_reason_stream(
         > + std::marker::Unpin,
     mut args: Args,
 ) -> Result<()> {
+    let mut accumulated_text = String::new();
     let mut previous_output = String::new();
-    let mut accumulated_content_bytes: Vec<u8> = Vec::new();
 
     let is_terminal = atty::is(atty::Stream::Stdout);
 
@@ -1232,18 +1212,7 @@ pub async fn handle_reason_stream(
         None
     };
 
-    let language = args.language.clone().unwrap_or("markdown".to_string());
-    let theme = args
-        .theme
-        .clone()
-        .unwrap_or("base16-ocean.dark".to_string());
     let mut reasoning = true;
-
-    let ps = SyntaxSet::load_defaults_newlines();
-    let ts = ThemeSet::load_defaults();
-
-    let syntax = ps.find_syntax_by_extension(&language).unwrap();
-    let mut h = HighlightLines::new(syntax, &ts.themes[&theme]);
 
     loop {
         let result = stream.try_next().await;
@@ -1265,8 +1234,6 @@ pub async fn handle_reason_stream(
                         reasoning = false;
                     }
 
-                    accumulated_content_bytes.extend_from_slice(text.as_bytes());
-
                     if !is_terminal {
                         // If not a terminal, print each instance of `text` directly to `stdout`
                         print!("{}", text);
@@ -1274,18 +1241,14 @@ pub async fn handle_reason_stream(
                         continue;
                     }
 
-                    let output = (std::str::from_utf8(&accumulated_content_bytes)?).to_string();
+                    accumulated_text.push_str(&text);
+                    let length = previous_output.lines().count();
 
-                    let unprinted_lines = LinesWithEndings::from(&output)
-                        .skip(if previous_output.lines().count() == 0 {
-                            0
-                        } else {
-                            previous_output.lines().count() - 1
-                        })
-                        .map(|line| {
-                            let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
-                            as_24_bit_terminal_escaped(&ranges[..], true)
-                        })
+                    let output = crate::printer::highlight_markdown(&accumulated_text);
+
+                    let unprinted_lines = output
+                        .lines()
+                        .skip(if length == 0 { 0 } else { length - 1 })
                         .collect::<Vec<_>>()
                         .join("\n");
 
@@ -1339,9 +1302,7 @@ pub async fn handle_reason_stream(
 
         args.conversation.push(ConversationMessage {
             role: ConversationRole::Assistant,
-            content: String::from_utf8_lossy(&accumulated_content_bytes)
-                .trim()
-                .to_string(),
+            content: accumulated_text.clone(),
         });
 
         // log the `args.conversation` to `stdout`.
