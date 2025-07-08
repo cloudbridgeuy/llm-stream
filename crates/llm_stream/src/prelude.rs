@@ -421,12 +421,6 @@ pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
     if args.quiet.is_none() {
         args.quiet = cache_args.quiet;
     }
-    if args.language.is_none() {
-        args.language = cache_args.language;
-    }
-    if args.theme.is_none() {
-        args.theme = cache_args.theme;
-    }
     if args.top_p.is_none() {
         args.top_p = cache_args.top_p;
     }
@@ -477,7 +471,6 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
             "prompt": args.prompt.clone().unwrap_or_default(),
             "stdin": args.stdin.clone().unwrap_or_default(),
             "suffix": args.suffix.clone().unwrap_or_default().to_string(),
-            "language": args.language.clone(),
         });
 
         merge(&mut value, default_vars);
@@ -578,12 +571,6 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
     if args.quiet.is_none() {
         args.quiet = config.quiet;
     }
-    if args.language.is_none() {
-        args.language = config.language;
-    }
-    if args.theme.is_none() {
-        args.theme = config.theme;
-    }
     if args.api.is_none() {
         args.api = config.api;
     }
@@ -629,7 +616,6 @@ mod tests {
             api_key: Some("123".to_string()),
             api_base_url: Some("https://api.openai.com/v1".to_string()),
             quiet: Some(true),
-            language: Some("md".to_string()),
             system: Some("Something Awesome".to_string()),
             temperature: Some(0.5),
             top_p: Some(0.5),
@@ -656,7 +642,6 @@ mod tests {
             key: Some("456".to_string()),
             base_url: Some("https://api.anthropic.com/v1".to_string()),
             quiet: Some(false),
-            language: Some("html".to_string()),
             system: Some("Something Awesome".to_string()),
             temperature: Some(0.7),
             top_p: Some(0.7),

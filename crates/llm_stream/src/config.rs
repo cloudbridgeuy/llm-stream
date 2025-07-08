@@ -66,10 +66,6 @@ pub struct Config {
     // Global
     #[serde(default = "default_false")]
     pub quiet: Option<bool>,
-    #[serde(default = "default_language")]
-    pub language: Option<String>,
-    #[serde(default = "default_theme")]
-    pub theme: Option<String>,
 
     // Model
     pub model: Option<String>,
@@ -109,8 +105,4 @@ fn default_false() -> Option<bool> {
 
 fn default_language() -> Option<String> {
     Some("md".to_string())
-}
-
-fn default_theme() -> Option<String> {
-    Some("base16-ocean.dark".to_string())
 }

@@ -155,10 +155,6 @@ pub struct Args {
     #[serde(skip_serializing)]
     pub quiet: Option<bool>,
 
-    /// Language to use for syntax highlight
-    #[clap(long, default_value = "md")]
-    pub language: Option<String>,
-
     /// Add a system message to the request.
     #[clap(long)]
     #[serde(skip_serializing)]
@@ -189,11 +185,6 @@ pub struct Args {
     /// Conversation to append to the model.
     #[clap(long, default_value="[]", value_parser = parse_conversation)]
     pub conversation: Conversation,
-
-    /// Language to use for syntax highlight
-    #[clap(long, default_value = "base16-ocean.dark")]
-    #[serde(skip_serializing)]
-    pub theme: Option<String>,
 
     /// Config dir where the configuration and conversation history will be stored.
     #[clap(long, default_value = "~/.config/llm-stream")]
