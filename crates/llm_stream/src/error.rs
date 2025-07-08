@@ -8,8 +8,6 @@ pub enum Error {
     EnvVar(#[from] std::env::VarError),
     #[error("invalid api")]
     InvalidAPI,
-    // #[error("unable to print with bat")]
-    // Bat(#[from] bat::error::Error),
     #[error("unable to coherce to u32")]
     TryFrom(#[from] std::num::TryFromIntError),
     #[error("api not specified")]

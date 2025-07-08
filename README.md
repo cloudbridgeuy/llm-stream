@@ -96,5 +96,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgements
 
-- Thanks to the [`bat`](https://github.com/sharkdp/bat) and [`tera`](https://github.com/Keats/tera) crates for being awesome.
 - Special thanks to the Rust community for their excellent tools and resources.

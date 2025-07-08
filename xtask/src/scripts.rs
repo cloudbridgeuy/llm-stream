@@ -6,24 +6,6 @@ use std::error::Error;
 use std::io::Write;
 
 pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
-    if !std::path::Path::new("lib/bat/assets/themes/tokyonight").exists() {
-        println!(
-            "{$red}Error: {[yellow]} does not exist.{/$}",
-            "lib/bat/assets/themes/tokyonight"
-        );
-
-        println!("{$magenta}Copying {[yellow]} theme{/$}", "tokyonight");
-        cmd(
-            "cp",
-            [
-                "-Rp",
-                "./crates/llm_stream/assets/themes/tokyonight",
-                "./lib/bat/assets/themes/",
-            ],
-        )
-        .read()?;
-    }
-
     let mut arguments = vec!["build", "--verbose"];
 
     if let Some(bin) = &args.bin {
