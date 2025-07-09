@@ -7,7 +7,6 @@ use nom::{
     error::Error,
     IResult,
 };
-use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
 use syntect::{
     easy::HighlightLines,
     highlighting::{Style, Theme, ThemeSet},
@@ -18,8 +17,7 @@ use syntect::{
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 static THEME: LazyLock<Theme> = LazyLock::new(|| {
     let theme_data = include_str!("../assets/themes/tokyonight/tokyonight-storm.tmTheme");
-    ThemeSet::load_from_reader(&mut std::io::Cursor::new(theme_data))
-        .unwrap()
+    ThemeSet::load_from_reader(&mut std::io::Cursor::new(theme_data)).unwrap()
 });
 static MARKDOWN_SYNTAX: LazyLock<&SyntaxReference> =
     LazyLock::new(|| SYNTAX_SET.find_syntax_by_name("Markdown").unwrap());
@@ -28,55 +26,6 @@ static TERMINAL_WIDTH: LazyLock<usize> = LazyLock::new(|| {
         .map(|(w, _)| w as usize)
         .unwrap_or(80)
 });
-
-pub fn markdown_to_24_bit_terminal_escaped(markdown: &str) -> String {
-    let mut sr = SYNTAX_SET.find_syntax_plain_text();
-    let mut output = String::new();
-    let mut code = String::new();
-    let mut code_block = false;
-
-    for event in Parser::new(markdown) {
-        match event {
-            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang))) => {
-                let lang = lang.trim();
-                sr = SYNTAX_SET
-                    .find_syntax_by_token(lang)
-                    .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
-                code_block = true;
-            }
-            Event::End(TagEnd::CodeBlock) => {
-                let mut highlighter = HighlightLines::new(sr, &THEME);
-                for line in LinesWithEndings::from(&format!("\n{}\n", code)) {
-                    let ranges: Vec<(Style, &str)> =
-                        highlighter.highlight_line(line, &SYNTAX_SET).unwrap();
-                    let escaped = as_24_bit_terminal_escaped(&ranges[..], false);
-                    output.push_str(&escaped);
-                }
-
-                code = String::new();
-                code_block = false;
-            }
-
-            Event::Text(t) => {
-                if code_block {
-                    code.push_str(&t);
-                } else {
-                    output.push_str(&t);
-                }
-            }
-
-            Event::Start(Tag::Paragraph) => {
-                if !output.is_empty() {
-                    output.push('\n');
-                }
-            }
-
-            _ => (),
-        }
-    }
-
-    output
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MarkdownElement {
@@ -144,15 +93,15 @@ fn parse_remaining_text(input: &str) -> IResult<&str, MarkdownElement> {
 fn wrap_text_to_terminal_width(text: &str) -> String {
     let width = *TERMINAL_WIDTH;
     let mut result = String::new();
-    
+
     // Split by newlines but preserve empty lines
     let lines: Vec<&str> = text.split('\n').collect();
-    
+
     for (i, line) in lines.iter().enumerate() {
         if i > 0 {
             result.push('\n');
         }
-        
+
         if line.len() <= width {
             // Line fits within width, keep as is
             result.push_str(line);
@@ -160,7 +109,7 @@ fn wrap_text_to_terminal_width(text: &str) -> String {
             // Line needs wrapping
             let words: Vec<&str> = line.split_whitespace().collect();
             let mut current_line = String::new();
-            
+
             for word in words {
                 // Check if adding this word would exceed width
                 let potential_length = if current_line.is_empty() {
@@ -168,7 +117,7 @@ fn wrap_text_to_terminal_width(text: &str) -> String {
                 } else {
                     current_line.len() + 1 + word.len() // +1 for space
                 };
-                
+
                 if potential_length <= width {
                     // Word fits, add it to current line
                     if !current_line.is_empty() {
@@ -182,7 +131,7 @@ fn wrap_text_to_terminal_width(text: &str) -> String {
                         result.push('\n');
                         current_line.clear();
                     }
-                    
+
                     // Handle very long words that exceed width
                     if word.len() > width {
                         // Split the word itself
@@ -190,10 +139,10 @@ fn wrap_text_to_terminal_width(text: &str) -> String {
                         while !remaining_word.is_empty() {
                             let chunk_size = width.min(remaining_word.len());
                             let chunk = &remaining_word[..chunk_size];
-                            
+
                             result.push_str(chunk);
                             remaining_word = &remaining_word[chunk_size..];
-                            
+
                             if !remaining_word.is_empty() {
                                 result.push('\n');
                             }
@@ -204,14 +153,14 @@ fn wrap_text_to_terminal_width(text: &str) -> String {
                     }
                 }
             }
-            
+
             // Add remaining content in current_line
             if !current_line.is_empty() {
                 result.push_str(&current_line);
             }
         }
     }
-    
+
     result
 }
 
@@ -470,12 +419,12 @@ mod tests {
         // Create a long line that will exceed typical terminal width
         let text = "This is a very long line that should definitely exceed the terminal width and therefore needs to be wrapped at appropriate word boundaries to ensure readability.";
         let wrapped = wrap_text_to_terminal_width(text);
-        
+
         // Check that no line exceeds terminal width
         for line in wrapped.lines() {
             assert!(line.len() <= *TERMINAL_WIDTH, "Line too long: '{}'", line);
         }
-        
+
         // Check that the text is preserved (all words should still be there)
         let original_words: Vec<&str> = text.split_whitespace().collect();
         let wrapped_words: Vec<&str> = wrapped.split_whitespace().collect();
@@ -486,12 +435,12 @@ mod tests {
     fn test_wrap_text_multiple_lines() {
         let text = "Short line.\nThis is a very long line that should definitely exceed the terminal width and therefore needs to be wrapped.\nAnother short line.";
         let wrapped = wrap_text_to_terminal_width(text);
-        
+
         // Check that no line exceeds terminal width
         for line in wrapped.lines() {
             assert!(line.len() <= *TERMINAL_WIDTH, "Line too long: '{}'", line);
         }
-        
+
         // Check that short lines are preserved
         let lines: Vec<&str> = wrapped.lines().collect();
         assert_eq!(lines[0], "Short line.");
@@ -502,7 +451,7 @@ mod tests {
     fn test_wrap_text_preserve_empty_lines() {
         let text = "First line.\n\nThird line.";
         let wrapped = wrap_text_to_terminal_width(text);
-        
+
         let lines: Vec<&str> = wrapped.lines().collect();
         assert_eq!(lines.len(), 3);
         assert_eq!(lines[0], "First line.");
@@ -515,12 +464,12 @@ mod tests {
         // Create a single word that exceeds terminal width
         let long_word = "a".repeat(*TERMINAL_WIDTH + 10);
         let wrapped = wrap_text_to_terminal_width(&long_word);
-        
+
         // Should be split into chunks
         for line in wrapped.lines() {
             assert!(line.len() <= *TERMINAL_WIDTH, "Line too long: '{}'", line);
         }
-        
+
         // All characters should be preserved
         let wrapped_chars: String = wrapped.chars().filter(|&c| c != '\n').collect();
         assert_eq!(wrapped_chars, long_word);
@@ -531,7 +480,7 @@ mod tests {
         // Test that text parsing applies wrapping
         let long_text = "This is a very long line that should definitely exceed the terminal width and therefore needs to be wrapped at appropriate word boundaries.";
         let input = format!("{}```", long_text);
-        
+
         if let Ok((_, element)) = parse_text_content(&input) {
             if let MarkdownElement::Text(content) = element {
                 // Check that no line exceeds terminal width

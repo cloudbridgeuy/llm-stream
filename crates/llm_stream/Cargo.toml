@@ -37,5 +37,4 @@ tempfile = "3.19.1"
 syntect = { version = "5.2.0", default-features = false, features = [
   "default-fancy",
 ] }
-pulldown-cmark = "0.13.0"
 nom = "7.1"
