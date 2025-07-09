@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::sync::LazyLock;
 
 use nom::{
@@ -9,9 +10,9 @@ use nom::{
 };
 use syntect::{
     easy::HighlightLines,
-    highlighting::{Style, Theme, ThemeSet},
+    highlighting::{Color, FontStyle, Style, Theme, ThemeSet},
     parsing::{SyntaxReference, SyntaxSet},
-    util::{as_24_bit_terminal_escaped, LinesWithEndings},
+    util::LinesWithEndings,
 };
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
@@ -31,6 +32,73 @@ static TERMINAL_WIDTH: LazyLock<usize> = LazyLock::new(|| {
 pub enum MarkdownElement {
     Text(String),
     Code { language: String, content: String },
+}
+
+#[inline]
+fn blend_fg_color(fg: Color, bg: Color) -> Color {
+    if fg.a == 0xff {
+        return fg;
+    }
+    let ratio = fg.a as u32;
+    let r = (fg.r as u32 * ratio + bg.r as u32 * (255 - ratio)) / 255;
+    let g = (fg.g as u32 * ratio + bg.g as u32 * (255 - ratio)) / 255;
+    let b = (fg.b as u32 * ratio + bg.b as u32 * (255 - ratio)) / 255;
+    Color {
+        r: r as u8,
+        g: g as u8,
+        b: b as u8,
+        a: 255,
+    }
+}
+
+/// Formats the styled fragments using 24-bit color terminal escape codes.
+/// Meant for debugging and testing.
+///
+/// This function is currently fairly inefficient in its use of escape codes.
+///
+/// Note that this does not currently ever un-set the color so that the end of a line will also get
+/// highlighted with the background.  This means if you might want to use `println!("\x1b[0m");`
+/// after to clear the coloring.
+///
+/// If `bg` is true then the background is also set
+pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
+    let mut s: String = String::new();
+    for &(ref style, text) in v.iter() {
+        if bg {
+            write!(
+                s,
+                "\x1b[48;2;{};{};{}m",
+                style.background.r, style.background.g, style.background.b
+            )
+            .unwrap();
+        }
+        
+        // Add font style formatting
+        if style.font_style.contains(FontStyle::BOLD) {
+            s.push_str("\x1b[1m");
+        }
+        if style.font_style.contains(FontStyle::ITALIC) {
+            s.push_str("\x1b[3m");
+        }
+        if style.font_style.contains(FontStyle::UNDERLINE) {
+            s.push_str("\x1b[4m");
+        }
+        
+        let fg = blend_fg_color(style.foreground, style.background);
+        write!(s, "\x1b[38;2;{};{};{}m{}", fg.r, fg.g, fg.b, text).unwrap();
+        
+        // Reset only the font styles to avoid bleeding, keeping colors intact
+        if style.font_style.contains(FontStyle::BOLD) {
+            s.push_str("\x1b[22m"); // Reset bold
+        }
+        if style.font_style.contains(FontStyle::ITALIC) {
+            s.push_str("\x1b[23m"); // Reset italic
+        }
+        if style.font_style.contains(FontStyle::UNDERLINE) {
+            s.push_str("\x1b[24m"); // Reset underline
+        }
+    }
+    s
 }
 
 fn parse_code_fence_start(input: &str) -> IResult<&str, String> {
