@@ -553,20 +553,36 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
     if args.max_tokens.is_none() {
         args.max_tokens = config.max_tokens;
     }
-    if args.api_version.is_none() {
-        args.api_version = config.version;
-    }
-    if args.api_env.is_none() {
-        args.api_env = config.env;
-    }
-    if args.api_key.is_none() {
-        args.api_key = config.key;
-    }
-    if args.api_base_url.is_none() {
-        args.api_base_url = config.base_url;
-    }
-    if args.model.is_none() {
-        args.model = config.model;
+    // `base_url`, `env`, `key`, `version`, and `model` describe one specific
+    // provider. Inheriting them when the operator selected a different one
+    // sends the request to the wrong endpoint — and, for a provider whose
+    // credential is a bearer token rather than an API key, sends that token to
+    // a host with no business receiving it. The remaining config defaults
+    // (system, max_tokens, temperature, top_p, top_k, quiet) describe the
+    // request rather than the provider, so they still apply to everyone.
+    //
+    // `config.api` is `Some` for any config file loaded from disk (serde fills
+    // it via `default_api`), so the `is_none` arm only covers a `Config`
+    // constructed in code — where preserving the old behaviour is safest.
+    let config_describes_this_api =
+        args.api.is_none() || config.api.is_none() || args.api == config.api;
+
+    if config_describes_this_api {
+        if args.api_version.is_none() {
+            args.api_version = config.version;
+        }
+        if args.api_env.is_none() {
+            args.api_env = config.env;
+        }
+        if args.api_key.is_none() {
+            args.api_key = config.key;
+        }
+        if args.api_base_url.is_none() {
+            args.api_base_url = config.base_url;
+        }
+        if args.model.is_none() {
+            args.model = config.model;
+        }
     }
     if args.quiet.is_none() {
         args.quiet = config.quiet;
@@ -655,6 +671,111 @@ mod tests {
             expected, actual,
             "merge_args_and_config changed the default values"
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn config_provider_fields_do_not_leak_across_providers(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // The real-world shape of this bug: a config whose top-level defaults
+        // describe an OpenAI-compatible endpoint, and an operator who asked
+        // for a different provider entirely.
+        let args = Args {
+            api: Some(Api::ChatGpt),
+            ..Default::default()
+        };
+
+        let config = Config {
+            api: Some(Api::OpenAi),
+            base_url: Some("https://api.githubcopilot.com".to_string()),
+            env: Some("COPILOT_API_KEY".to_string()),
+            key: Some("secret".to_string()),
+            version: Some("0.1.0".to_string()),
+            model: Some("gpt-4o".to_string()),
+            ..Default::default()
+        };
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(actual.api_base_url, None, "base_url leaked across providers");
+        assert_eq!(actual.model, None, "model leaked across providers");
+        assert_eq!(actual.api_env, None, "env leaked across providers");
+        assert_eq!(actual.api_key, None, "key leaked across providers");
+        assert_eq!(actual.api_version, None, "version leaked across providers");
+
+        Ok(())
+    }
+
+    #[test]
+    fn config_provider_fields_apply_when_the_api_matches(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let args = Args {
+            api: Some(Api::OpenAi),
+            ..Default::default()
+        };
+
+        let config = Config {
+            api: Some(Api::OpenAi),
+            base_url: Some("https://api.githubcopilot.com".to_string()),
+            model: Some("gpt-4o".to_string()),
+            ..Default::default()
+        };
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            actual.api_base_url.as_deref(),
+            Some("https://api.githubcopilot.com")
+        );
+        assert_eq!(actual.model.as_deref(), Some("gpt-4o"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn config_provider_fields_apply_when_no_api_was_selected(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // No `--api` flag: the config's own `api` is what gets selected a few
+        // lines later, so its companion fields are the right ones to inherit.
+        let args = Args::default();
+
+        let config = Config {
+            api: Some(Api::OpenAi),
+            base_url: Some("https://api.githubcopilot.com".to_string()),
+            model: Some("gpt-4o".to_string()),
+            ..Default::default()
+        };
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(actual.api, Some(Api::OpenAi));
+        assert_eq!(actual.model.as_deref(), Some("gpt-4o"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_arguments_still_win_over_a_matching_config(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let args = Args {
+            api: Some(Api::OpenAi),
+            model: Some("o3-mini".to_string()),
+            api_base_url: Some("https://example.test/v1".to_string()),
+            ..Default::default()
+        };
+
+        let config = Config {
+            api: Some(Api::OpenAi),
+            base_url: Some("https://api.githubcopilot.com".to_string()),
+            model: Some("gpt-4o".to_string()),
+            ..Default::default()
+        };
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(actual.model.as_deref(), Some("o3-mini"));
+        assert_eq!(actual.api_base_url.as_deref(), Some("https://example.test/v1"));
 
         Ok(())
     }
