@@ -95,6 +95,71 @@ pub fn reasoning_of(
     }))
 }
 
+/// Slugs `--models` asks about.
+///
+/// **Not an allowlist.** `--model` still accepts any string and the server
+/// decides — see the note on [`DEFAULT_MODEL`]. This list only bounds what the
+/// probe *asks*, which makes being wrong about it cheap: a slug this account
+/// cannot use simply shows up refused, and a slug missing from the list is
+/// still perfectly usable via `--model`.
+///
+/// Verified accepted on a Plus account on 2026-07-28: `gpt-5.6-sol`,
+/// `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`.
+pub const CANDIDATE_MODELS: &[&str] = &[
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.3",
+    "gpt-5.1",
+    "gpt-5-codex",
+];
+
+/// What one probe learned about one model.
+///
+/// Three cases, not a `bool` plus an `Option<String>`: a probe that is both
+/// accepted and carrying a rejection sentence is not a state this program
+/// should be able to represent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Probe {
+    /// The server opened the stream. This account may use the model.
+    Accepted,
+    /// The server refused, in its own words.
+    Refused(String),
+    /// The connection closed before the server said anything either way.
+    NoAnswer,
+}
+
+/// Reads the first thing one probe stream produced.
+///
+/// One event is the whole signal. A model this account cannot use is refused at
+/// the HTTP layer, before any SSE arrives, so anything that made it out of the
+/// stream as `Ok` already means the request was accepted.
+#[must_use]
+pub fn probe_of(first: Option<std::result::Result<(), String>>) -> Probe {
+    match first {
+        Some(Ok(())) => Probe::Accepted,
+        Some(Err(message)) => Probe::Refused(message),
+        None => Probe::NoAnswer,
+    }
+}
+
+/// Whether a stream error means "the server stopped talking" rather than "the
+/// server refused".
+///
+/// `handle_stream` in `prelude.rs` treats `Eof` as the ordinary end of a
+/// stream, so a probe must not report it as a rejection. Every other transport
+/// error is something the operator should see in the table — an unreadable
+/// timeout beats a silent `OK`.
+#[must_use]
+pub const fn is_end_of_stream(error: &llm_stream::error::Error) -> bool {
+    matches!(
+        error,
+        llm_stream::error::Error::EventsourceClient(llm_stream::error::EventsourceError::Eof)
+    )
+}
+
 /// A conversation split the way the Responses API wants it.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct MappedConversation {
@@ -415,5 +480,53 @@ mod tests {
         // `clap` guards the command line. Nothing guards config.toml, which is
         // the whole reason `parse_effort` exists.
         assert!(reasoning_of(Some("maximum"), true).is_err());
+    }
+
+    #[test]
+    fn the_default_model_is_probed_first() {
+        // Someone reading the table top-down should see the model they get
+        // without `--model` on the first line.
+        assert_eq!(CANDIDATE_MODELS.first(), Some(&DEFAULT_MODEL));
+    }
+
+    #[test]
+    fn every_candidate_is_listed_once() {
+        // A duplicate slug is a wasted request against someone's quota.
+        let mut seen = std::collections::HashSet::new();
+        for model in CANDIDATE_MODELS {
+            assert!(seen.insert(model), "{model} is listed twice");
+        }
+    }
+
+    #[test]
+    fn an_opened_stream_means_the_model_is_usable() {
+        assert_eq!(probe_of(Some(Ok(()))), Probe::Accepted);
+    }
+
+    #[test]
+    fn a_refusal_keeps_the_servers_own_words() {
+        let sentence =
+            "The 'gpt-4o' model is not supported when using Codex with a ChatGPT account.";
+        assert_eq!(
+            probe_of(Some(Err(sentence.to_string()))),
+            Probe::Refused(sentence.to_string())
+        );
+    }
+
+    #[test]
+    fn a_silent_stream_is_neither_accepted_nor_refused() {
+        // Reporting this as `OK` would send someone off to use a model that
+        // never answered.
+        assert_eq!(probe_of(None), Probe::NoAnswer);
+    }
+
+    #[test]
+    fn end_of_stream_is_not_a_refusal() {
+        let eof =
+            llm_stream::error::Error::EventsourceClient(llm_stream::error::EventsourceError::Eof);
+        assert!(is_end_of_stream(&eof));
+        assert!(!is_end_of_stream(&llm_stream::error::Error::ApiError(
+            "nope".to_string()
+        )));
     }
 }
