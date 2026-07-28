@@ -43,6 +43,58 @@ pub fn inert_flag_warnings(args: &Args) -> Vec<&'static str> {
     warnings
 }
 
+/// The effort a request carries when the operator asked for a summary but named
+/// no effort. `medium` is the Responses API's own default, so this changes
+/// nothing about the model's behaviour — it exists because our `Reasoning` type
+/// makes `effort` non-optional, which is what stops an empty reasoning object
+/// from being representable.
+const DEFAULT_EFFORT: api::Effort = api::Effort::Medium;
+
+/// Turns an effort string into the enum the wire accepts.
+///
+/// `clap` rejects bad values typed at the shell, but the same string can arrive
+/// from `config.toml` or a preset where nothing has checked it. This is the one
+/// place the conversion happens, and it happens once.
+///
+/// The `Err` is the sentence the operator should read; `run` prints it.
+pub fn parse_effort(raw: &str) -> std::result::Result<api::Effort, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "low" => Ok(api::Effort::Low),
+        "medium" => Ok(api::Effort::Medium),
+        "high" => Ok(api::Effort::High),
+        "xhigh" => Ok(api::Effort::XHigh),
+        other => Err(format!(
+            "unknown reasoning effort {other:?}; expected one of: low, medium, high, xhigh"
+        )),
+    }
+}
+
+/// Builds the request's `reasoning` field, or `None` when the operator asked for
+/// neither an effort nor a summary.
+///
+/// Returning `None` in the default case is deliberate and load-bearing: it keeps
+/// a plain `--api chatgpt "hi"` byte-for-byte identical to the request V2
+/// verified against the live endpoint. This endpoint is undocumented, so there
+/// is no specification to appeal to if an unrequested field turns out to matter.
+/// Opting in costs the operator one flag.
+pub fn reasoning_of(
+    effort: Option<&str>,
+    summary: bool,
+) -> std::result::Result<Option<api::Reasoning>, String> {
+    if effort.is_none() && !summary {
+        return Ok(None);
+    }
+
+    Ok(Some(api::Reasoning {
+        effort: effort.map_or(Ok(DEFAULT_EFFORT), parse_effort)?,
+        // `detailed` rather than `auto`: the model decides whether to summarise
+        // at all, and in live comparison `auto` produced nothing where
+        // `detailed` produced a summary. Someone who typed --reasoning-summary
+        // wants the odds on their side.
+        summary: summary.then_some(api::Summary::Detailed),
+    }))
+}
+
 /// A conversation split the way the Responses API wants it.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct MappedConversation {
@@ -262,5 +314,69 @@ mod tests {
             inert_flag_warnings(&args),
             vec![SAMPLING_WARNING, CREDENTIAL_WARNING]
         );
+    }
+
+    #[test]
+    fn no_flags_send_no_reasoning_field_at_all() {
+        // Guards V2's verified default request. If this ever starts returning
+        // `Some`, the one request path known to work has changed shape.
+        assert_eq!(reasoning_of(None, false), Ok(None));
+    }
+
+    #[test]
+    fn an_effort_alone_asks_for_no_summary() {
+        assert_eq!(
+            reasoning_of(Some("xhigh"), false),
+            Ok(Some(api::Reasoning {
+                effort: api::Effort::XHigh,
+                summary: None,
+            }))
+        );
+    }
+
+    #[test]
+    fn a_summary_alone_defaults_the_effort() {
+        assert_eq!(
+            reasoning_of(None, true),
+            Ok(Some(api::Reasoning {
+                effort: api::Effort::Medium,
+                summary: Some(api::Summary::Detailed),
+            }))
+        );
+    }
+
+    #[test]
+    fn both_flags_combine() {
+        assert_eq!(
+            reasoning_of(Some("low"), true),
+            Ok(Some(api::Reasoning {
+                effort: api::Effort::Low,
+                summary: Some(api::Summary::Detailed),
+            }))
+        );
+    }
+
+    #[test]
+    fn effort_parsing_tolerates_case_and_stray_whitespace() {
+        // A hand-edited config.toml is the realistic source of both.
+        assert_eq!(parse_effort("  High "), Ok(api::Effort::High));
+        assert_eq!(parse_effort("XHIGH"), Ok(api::Effort::XHigh));
+    }
+
+    #[test]
+    fn an_unknown_effort_names_the_value_and_the_alternatives() {
+        let message = parse_effort("turbo").unwrap_err();
+        assert!(message.contains("turbo"), "got: {message}");
+        assert!(
+            message.contains("low, medium, high, xhigh"),
+            "the operator cannot act on this: {message}"
+        );
+    }
+
+    #[test]
+    fn a_bad_effort_from_a_config_file_fails_the_request() {
+        // `clap` guards the command line. Nothing guards config.toml, which is
+        // the whole reason `parse_effort` exists.
+        assert!(reasoning_of(Some("maximum"), true).is_err());
     }
 }

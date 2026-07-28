@@ -36,6 +36,8 @@ pub enum Error {
     Auth(String),
     #[error("http error: {0}")]
     Http(String),
+    #[error("{0}")]
+    InvalidValue(String),
 }
 
 pub(crate) fn format_error(
