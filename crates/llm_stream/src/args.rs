@@ -180,6 +180,16 @@ pub struct Args {
     #[clap(long)]
     pub top_k: Option<u32>,
 
+    /// How hard the model should think. Only the `chatgpt` provider honours it;
+    /// every other provider ignores it silently.
+    #[clap(long, value_parser = ["low", "medium", "high", "xhigh"])]
+    pub reasoning_effort: Option<String>,
+
+    /// Stream the model's reasoning summary to stderr before the answer.
+    #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
+    pub reasoning_summary: bool,
+
     /// Prompt template to use
     #[clap(short, long)]
     #[serde(skip_serializing)]

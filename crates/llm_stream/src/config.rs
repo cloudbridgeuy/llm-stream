@@ -24,6 +24,7 @@ pub struct Preset {
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub top_k: Option<u32>,
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -78,6 +79,7 @@ pub struct Config {
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub top_k: Option<u32>,
+    pub reasoning_effort: Option<String>,
 }
 
 impl Config {
