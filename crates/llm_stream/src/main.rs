@@ -196,6 +196,7 @@ async fn main() -> Result<()> {
         Some(Api::Ollama) => ollama::run(args).await,
         Some(Api::Groq) => groq::run(args).await,
         Some(Api::DeepSeek) => openai::reason(args).await,
+        Some(Api::ChatGpt) => chatgpt::run(args).await,
         None => Err(Error::ApiNotSpecified),
     }
 }
