@@ -44,6 +44,40 @@ async fn main() -> Result<()> {
         std::fs::create_dir_all(&config_dir)?;
     }
 
+    if args.login {
+        let tokens = auth::flow::login(std::path::Path::new(&config_dir))?;
+        let info = auth::token::account_info(&tokens.id_token).unwrap_or_default();
+        println!(
+            "signed in as {} ({})",
+            info.email.unwrap_or_else(|| "unknown".to_string()),
+            info.plan_type.unwrap_or_else(|| "unknown plan".to_string())
+        );
+        return Ok(());
+    }
+
+    if args.logout {
+        auth::store::clear(std::path::Path::new(&config_dir))?;
+        println!("signed out");
+        return Ok(());
+    }
+
+    if args.login_status {
+        match auth::flow::status(std::path::Path::new(&config_dir))? {
+            Some((info, expiry)) => {
+                let remaining = expiry
+                    .duration_since(std::time::SystemTime::now())
+                    .map_or(0, |d| d.as_secs());
+                println!(
+                    "signed in as {} ({}) — access token valid for {remaining}s",
+                    info.email.unwrap_or_else(|| "unknown".to_string()),
+                    info.plan_type.unwrap_or_else(|| "unknown plan".to_string())
+                );
+            }
+            None => println!("{}", auth::flow::NOT_SIGNED_IN),
+        }
+        return Ok(());
+    }
+
     args.config_file = if let Some(config_file) = args.config_file {
         Some(config_file.clone().replace('~', &home))
     } else {

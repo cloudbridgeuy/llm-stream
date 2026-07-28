@@ -293,4 +293,19 @@ pub struct Args {
     #[clap(long)]
     #[serde(skip_serializing, default)]
     pub editor: bool,
+
+    /// Sign in to a ChatGPT account through the browser.
+    #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
+    pub login: bool,
+
+    /// Print the current ChatGPT sign-in status.
+    #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
+    pub login_status: bool,
+
+    /// Remove the stored ChatGPT credentials.
+    #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
+    pub logout: bool,
 }
