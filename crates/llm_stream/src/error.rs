@@ -110,7 +110,8 @@ mod tests {
 
     #[test]
     fn api_errors_show_only_the_servers_sentence() {
-        let sentence = "The 'gpt-4o' model is not supported when using Codex with a ChatGPT account.";
+        let sentence =
+            "The 'gpt-4o' model is not supported when using Codex with a ChatGPT account.";
         let error = Error::EsStream(llm_stream::error::Error::ApiError(sentence.to_string()));
         assert_eq!(user_message(&error), sentence);
         assert!(

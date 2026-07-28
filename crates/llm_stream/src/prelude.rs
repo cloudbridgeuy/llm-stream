@@ -698,7 +698,10 @@ mod tests {
 
         let actual = merge_args_and_config(args, config)?;
 
-        assert_eq!(actual.api_base_url, None, "base_url leaked across providers");
+        assert_eq!(
+            actual.api_base_url, None,
+            "base_url leaked across providers"
+        );
         assert_eq!(actual.model, None, "model leaked across providers");
         assert_eq!(actual.api_env, None, "env leaked across providers");
         assert_eq!(actual.api_key, None, "key leaked across providers");
@@ -775,7 +778,10 @@ mod tests {
         let actual = merge_args_and_config(args, config)?;
 
         assert_eq!(actual.model.as_deref(), Some("o3-mini"));
-        assert_eq!(actual.api_base_url.as_deref(), Some("https://example.test/v1"));
+        assert_eq!(
+            actual.api_base_url.as_deref(),
+            Some("https://example.test/v1")
+        );
 
         Ok(())
     }

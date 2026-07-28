@@ -72,7 +72,7 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
             )
             .unwrap();
         }
-        
+
         // Add font style formatting
         if style.font_style.contains(FontStyle::BOLD) {
             s.push_str("\x1b[1m");
@@ -83,10 +83,10 @@ pub fn as_24_bit_terminal_escaped(v: &[(Style, &str)], bg: bool) -> String {
         if style.font_style.contains(FontStyle::UNDERLINE) {
             s.push_str("\x1b[4m");
         }
-        
+
         let fg = blend_fg_color(style.foreground, style.background);
         write!(s, "\x1b[38;2;{};{};{}m{}", fg.r, fg.g, fg.b, text).unwrap();
-        
+
         // Reset only the font styles to avoid bleeding, keeping colors intact
         if style.font_style.contains(FontStyle::BOLD) {
             s.push_str("\x1b[22m"); // Reset bold

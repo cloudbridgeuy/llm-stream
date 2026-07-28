@@ -1,6 +1,6 @@
 use anyhow::Result;
-use llm_stream::anthropic::{Auth, Client, Message, MessageBody, Role};
 use futures::stream::TryStreamExt;
+use llm_stream::anthropic::{Auth, Client, Message, MessageBody, Role};
 use std::io::Write;
 
 #[tokio::main]
