@@ -127,6 +127,29 @@ Any provider whose stream can carry both a reasoning summary and answer text (`c
 - **WHEN** the operator runs `llm-stream --api deepseek "<prompt>" | cat`
 - **THEN** stdout contains only the answer, with no leading `---`
 
+### Requirement: Model discovery
+Running `llm-stream --models` asks the server which models the signed-in ChatGPT account may use, one at a time, and reports the answer for every candidate slug. It is a query: it succeeds whether the account can use every candidate or none of them.
+
+#### Scenario: Probing while signed in
+- **WHEN** the operator runs `llm-stream --models` while signed in
+- **THEN** the CLI prints a warning to stderr naming how many models it will probe and that each accepted probe spends subscription quota, before opening any connection
+- **AND** it prints a table to stdout with one row per candidate slug
+- **AND** a slug the account may use reads `OK`
+- **AND** a slug the server refuses reads the server's own sentence
+
+#### Scenario: Not signed in
+- **WHEN** the operator runs `llm-stream --models` without stored ChatGPT credentials
+- **THEN** the CLI errors with `not signed in — run: llm-stream --login`
+- **AND** no quota warning is printed and no model is probed
+
+#### Scenario: Redirecting the table
+- **WHEN** the operator runs `llm-stream --models > models.txt`
+- **THEN** `models.txt` contains only the table, and the quota warning appears on the terminal
+
+#### Scenario: The candidate list is not an allowlist
+- **WHEN** the operator runs `llm-stream --api chatgpt --model <slug> "<prompt>"` with a slug that `--models` does not list
+- **THEN** the request is still sent and the server decides, exactly as if the slug had been listed
+
 ### Requirement: Provider-scoped config defaults
 The config file's top-level `base_url`, `env`, `key`, `version`, and `model` defaults describe one specific provider and are only inherited when the config file's own `api` matches the provider selected via `--api`, or no `--api` flag was given.
 
