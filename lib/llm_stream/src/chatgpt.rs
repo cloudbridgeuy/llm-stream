@@ -412,7 +412,9 @@ mod tests {
 
     #[test]
     fn classifies_reasoning_summary_delta() {
-        let ev = classify(include_str!("../tests/fixtures/reasoning_summary_delta.json"));
+        let ev = classify(include_str!(
+            "../tests/fixtures/reasoning_summary_delta.json"
+        ));
         assert!(
             matches!(ev, ResponseEvent::ReasoningDelta { ref delta } if delta.contains("17 times 23")),
             "got {ev:?}"

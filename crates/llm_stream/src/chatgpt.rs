@@ -85,10 +85,7 @@ pub async fn run(mut args: Args) -> Result<()> {
         .unwrap_or_else(|| api::DEFAULT_URL.to_string());
     log::info!("url: {url}");
 
-    let client = api::Client::new(
-        api::Auth::new(tokens.access_token, tokens.account_id),
-        url,
-    );
+    let client = api::Client::new(api::Auth::new(tokens.access_token, tokens.account_id), url);
 
     let mapped = map_conversation(&args.conversation, args.system.as_deref());
 
