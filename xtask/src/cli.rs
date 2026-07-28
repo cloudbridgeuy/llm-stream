@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand};
 #[command(about = "Run project tasks using rust instead of scripts")]
 pub struct App {
     #[command(subcommand)]
-    pub command: Option<Commands>,
+    pub command: Commands,
 }
 
 #[derive(Debug, Subcommand)]
@@ -20,6 +20,8 @@ pub enum Commands {
     Github(GithubArgs),
     /// Creates a new Changelog entry using `git` and `e`.
     Changelog(ChangelogArgs),
+    /// Handles lint, tests, fmt, rail, and other cargo related code.
+    Lint(crate::lint::LintArgs),
 }
 
 #[derive(Args, Debug)]

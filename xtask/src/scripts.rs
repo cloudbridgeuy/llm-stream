@@ -1,31 +1,30 @@
 use crate::cli;
 use crate::cli::GithubArgs;
-use bunt::println;
+use color_eyre::eyre::{eyre, Result};
 use duct::cmd;
-use std::error::Error;
 use std::io::Write;
 
-pub fn build(args: &cli::BuildArgs) -> Result<(), Box<dyn Error>> {
+pub fn build(args: &cli::BuildArgs) -> Result<()> {
     let mut arguments = vec!["build", "--verbose"];
 
     if let Some(bin) = &args.bin {
-        println!("{$magenta}Building {[yellow]}{/$}", bin);
+        println!("Building {bin}");
         arguments.push("--bin");
         arguments.push(bin);
     }
 
     if args.release {
-        println!("{$magenta}Building in release mode{/$}");
+        println!("Building in release mode");
         arguments.push("--release");
     }
 
-    println!("{$magenta}Building...{/$}");
+    println!("Building...");
     cmd("cargo", arguments).read()?;
 
     Ok(())
 }
 
-fn release(bin: Option<String>) -> Result<(), Box<dyn Error>> {
+fn release(bin: Option<String>) -> Result<()> {
     let build_args = cli::BuildArgs { release: true, bin };
 
     build(&build_args)?;
@@ -33,7 +32,7 @@ fn release(bin: Option<String>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn install(args: &cli::InstallArgs) -> Result<(), Box<dyn Error>> {
+pub fn install(args: &cli::InstallArgs) -> Result<()> {
     release(Some(args.name.clone()))?;
 
     let target_path = "target/release/".to_string() + &args.name;
@@ -44,10 +43,10 @@ pub fn install(args: &cli::InstallArgs) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
+pub fn changelog(args: &cli::ChangelogArgs) -> Result<()> {
     let prev_version = &args.prev_version;
 
-    println!("{$magenta}Generating changelog{/$}");
+    println!("Generating changelog");
     let log = cmd(
         "git",
         [
@@ -61,7 +60,7 @@ pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
     .run()?
     .stdout;
 
-    println!("{$magenta}Creating changelog entry{/$}");
+    println!("Creating changelog entry");
     let changelog = String::from_utf8(
         cmd(
             "llm-stream",
@@ -80,35 +79,35 @@ pub fn changelog(args: &cli::ChangelogArgs) -> Result<(), Box<dyn Error>> {
         .stdout,
     )?;
 
-    println!("{$magenta}Updating CHANGELOG.md{/$}");
+    println!("Updating CHANGELOG.md");
     std::fs::OpenOptions::new()
         .append(true)
         .open("CHANGELOG.md")?
         .write_all(changelog.as_bytes())?;
 
-    println!("{$magenta}Opening CHANGELOG.md in editor{/$}");
+    println!("Opening CHANGELOG.md");
     cmd(std::env::var("EDITOR")?, ["CHANGELOG.md"]).run()?;
 
     Ok(())
 }
 
-pub fn publish(args: &cli::PublishArgs) -> Result<(), Box<dyn Error>> {
+pub fn publish(args: &cli::PublishArgs) -> Result<()> {
     let version = &args.next_version;
 
     if args.no_changelog {
-        println!("{$magenta}Skipping the changelog command{/$}");
+        println!("Skipping the changelog command");
     } else {
-        println!("{$magenta}Running the changelog command{/$}");
+        println!("Running the changelog command");
         changelog(&cli::ChangelogArgs {
             prev_version: args
                 .prev_version
                 .clone()
-                .expect("prev_version is undefined"),
+                .ok_or_else(|| eyre!("prev_version is required unless --no-changelog is used"))?,
             next_version: version.clone(),
         })?;
     }
 
-    println!("{$magenta}Publishing {[yellow]} to GitHub{/$}", &version);
+    println!("Publishing {version} to GitHub");
     github(&GithubArgs {
         version: version.clone(),
         bin: args.bin.clone(),
@@ -125,13 +124,13 @@ pub fn publish(args: &cli::PublishArgs) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn github(args: &cli::GithubArgs) -> Result<(), Box<dyn Error>> {
+pub fn github(args: &cli::GithubArgs) -> Result<()> {
     release(args.bin.clone())?;
 
     let version = &args.version;
     let notes = "Release notes for ".to_string() + version;
 
-    println!("{$magenta}Creating {[yellow]} tag{/$}", &version);
+    println!("Creating {version} tag");
     let git_committer_date = String::from_utf8(
         cmd("git", ["log", "-n1", "--pretty=%aD"])
             .stdout_capture()
@@ -146,28 +145,22 @@ pub fn github(args: &cli::GithubArgs) -> Result<(), Box<dyn Error>> {
     .env("GIT_COMMITTER_DATE", git_committer_date)
     .run()?;
 
-    println!("{$magenta}Pusing {[yellow]} tag{/$}", &version);
+    println!("Pushing {version} tag");
     cmd!("git", "push", "origin", &version).run()?;
 
-    println!("{$magenta}Logging into GitHub{/$}");
+    println!("Logging into GitHub");
     cmd("gh", ["auth", "login", "--with-token"])
         .stdin_bytes(std::env::var("GITHUB_PAT_CLOUDBRIDGEUY")?)
         .run()?;
 
-    println!("{$magenta}Creating {[yellow]} release{/$}", &version);
+    println!("Creating {version} release");
     cmd!("gh", "release", "create", &version, "--title", &version, "--notes", &notes).run()?;
 
-    println!(
-        "{$magenta}Uploading {[yellow]} release binary{/$}",
-        &version
-    );
+    println!("Uploading {version} release binary");
     if let Some(bin) = &args.bin {
         let target_path = "target/release/".to_string() + bin;
 
-        println!(
-            "{$magenta}Uploading {[yellow]} release binary{/$}",
-            &version
-        );
+        println!("Uploading {version} release binary");
         cmd(
             "gh",
             ["release", "upload", version, &target_path, "--clobber"],
