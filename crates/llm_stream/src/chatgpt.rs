@@ -68,6 +68,48 @@ pub fn map_conversation(
     }
 }
 
+/// Streams an answer from a `ChatGPT` subscription.
+pub async fn run(mut args: Args) -> Result<()> {
+    let config_dir = args
+        .config_dir
+        .clone()
+        .ok_or_else(|| Error::Auth("the config directory was not resolved".to_string()))?;
+
+    // Loads `<config_dir>/auth.json`, refreshing the access token if it is
+    // close to expiry. Errors with the `--login` instruction when signed out.
+    let tokens = crate::auth::flow::ensure_valid(std::path::Path::new(&config_dir))?;
+
+    let url = args
+        .api_base_url
+        .take()
+        .unwrap_or_else(|| api::DEFAULT_URL.to_string());
+    log::info!("url: {url}");
+
+    let client = api::Client::new(
+        api::Auth::new(tokens.access_token, tokens.account_id),
+        url,
+    );
+
+    let mapped = map_conversation(&args.conversation, args.system.as_deref());
+
+    let model = args
+        .model
+        .take()
+        .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+
+    let mut body = api::MessageBody::new(&model, mapped.input);
+    body.instructions = mapped.instructions;
+    // `args.from` is `Some(id)` exactly when a conversation is being continued,
+    // which is when a stable cache key is worth having.
+    body.prompt_cache_key = args.from.clone();
+
+    log::info!("body: {body:#?}");
+
+    let stream = client.delta(&body)?;
+
+    handle_stream(stream, args).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
