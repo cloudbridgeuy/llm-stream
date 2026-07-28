@@ -1,5 +1,6 @@
 #![allow(clippy::result_large_err)]
 pub mod anthropic;
+pub mod chatgpt;
 pub mod error;
 pub mod event;
 pub mod google;
