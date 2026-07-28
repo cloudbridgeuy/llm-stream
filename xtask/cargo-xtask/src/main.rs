@@ -38,10 +38,7 @@ fn run() -> io::Result<()> {
             .current_dir(&workspace)
             .status()?;
         if !status.success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "failed to build xtask",
-            ));
+            return Err(io::Error::other("failed to build xtask"));
         }
     }
 
@@ -101,7 +98,7 @@ fn replace_with_xtask(binary: &Path, dispatch: &Dispatch) -> io::Result<()> {
         if status.success() {
             Ok(())
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, "xtask failed"))
+            Err(io::Error::other("xtask failed"))
         }
     }
 }
