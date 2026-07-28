@@ -79,3 +79,24 @@ Running `llm-stream --api chatgpt` sends the prompt, and any conversation histor
 #### Scenario: Not signed in
 - **WHEN** the operator runs `llm-stream --api chatgpt "<prompt>"` without stored ChatGPT credentials
 - **THEN** the CLI errors with `not signed in — run: llm-stream --login` and streams nothing
+
+#### Scenario: Rejected model
+- **WHEN** the operator runs `llm-stream --api chatgpt --model <model> "<prompt>"` and the server refuses the request (for example, a model the account's plan cannot use)
+- **THEN** the CLI errors with the server's own message (for example, `The '<model>' model is not supported when using Codex with a ChatGPT account.`) and streams nothing
+
+#### Scenario: Inert flags
+- **WHEN** the operator runs `llm-stream --api chatgpt` with `--temperature`, `--top-p`, `--top-k`, `--api-key`, or `--api-env`
+- **THEN** the CLI prints a warning to stderr that the flag is ignored by this provider
+- **AND** the answer still streams to stdout as normal
+
+### Requirement: Provider-scoped config defaults
+The config file's top-level `base_url`, `env`, `key`, `version`, and `model` defaults describe one specific provider and are only inherited when the config file's own `api` matches the provider selected via `--api`, or no `--api` flag was given.
+
+#### Scenario: Config file describes a different provider
+- **WHEN** the operator runs `llm-stream --api <provider> "<prompt>"` and the config file's top-level `api` names a different provider
+- **THEN** `base_url`, `env`, `key`, `version`, and `model` are not inherited from the config file
+- **AND** the provider falls back to its own built-in default endpoint and model
+
+#### Scenario: Config file matches the selected provider
+- **WHEN** the operator runs `llm-stream --api <provider> "<prompt>"` and the config file's top-level `api` matches `<provider>`, or omits `--api` entirely
+- **THEN** `base_url`, `env`, `key`, `version`, and `model` are inherited from the config file as before
