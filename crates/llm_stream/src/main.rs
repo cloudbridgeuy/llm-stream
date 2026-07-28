@@ -24,9 +24,21 @@ mod printer;
 use crate::prelude::*;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     env_logger::init();
 
+    if let Err(error) = try_main().await {
+        eprintln!("{}", crate::error::user_message(&error));
+        std::process::exit(1);
+    }
+}
+
+/// Everything `main` used to do.
+///
+/// Split out so that the one place an error is rendered for a human is a single
+/// pure function, rather than Rust's default `Debug` printing of whatever
+/// bubbled up.
+async fn try_main() -> Result<()> {
     let mut args = Args::parse();
 
     log::info!("args: {:#?}", args);
