@@ -7,12 +7,19 @@
 //! The endpoint is private to OpenAI's Codex client and undocumented. Every
 //! constant here came from live measurement, not from a specification.
 
+use eventsource_client::{Client as EsClient, ClientBuilder, ReconnectOptions, SSE};
+use futures::stream::{Stream, TryStreamExt};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
+use crate::error::Error;
 use crate::event::ReasonEvent;
 
 /// Base URL of the private Codex backend a ChatGPT subscription can reach.
 pub const DEFAULT_URL: &str = "https://chatgpt.com/backend-api/codex";
+
+/// Appended to the client's base URL to reach the Responses endpoint.
+const RESPONSES_API: &str = "/responses";
 
 /// How hard the model should think. The Responses endpoint discards
 /// `temperature` and `top_p`; this is the only sampling control it honours.
@@ -228,6 +235,103 @@ pub fn to_reason_event(event: ResponseEvent) -> ReasonEvent {
         ResponseEvent::OutputTextDelta { delta } => ReasonEvent::Delta(delta),
         ResponseEvent::ReasoningDelta { delta } => ReasonEvent::Reasoning(delta),
         ResponseEvent::Completed | ResponseEvent::Unknown => ReasonEvent::Empty,
+    }
+}
+
+/// Subscription credentials for the Codex backend.
+#[derive(Debug, Clone)]
+pub struct Auth {
+    pub access_token: String,
+    /// Sent as `chatgpt-account-id` when present. Absence is normal.
+    pub account_id: Option<String>,
+}
+
+impl Auth {
+    #[must_use]
+    pub const fn new(access_token: String, account_id: Option<String>) -> Self {
+        Self {
+            access_token,
+            account_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Client {
+    pub auth: Auth,
+    pub api_url: String,
+}
+
+impl Client {
+    pub fn new(auth: Auth, api_url: impl Into<String>) -> Self {
+        Self {
+            auth,
+            api_url: api_url.into(),
+        }
+    }
+
+    /// Builds the SSE request. Split out so the streaming methods stay free of
+    /// header plumbing.
+    fn request(&self, message_body: &MessageBody) -> Result<impl EsClient, Error> {
+        let request_body = serde_json::to_value(message_body)?;
+        log::debug!("request_body: {request_body:#?}");
+
+        let authorization = format!("Bearer {}", self.auth.access_token);
+
+        // NEVER add a `version` header here. The server compares it against
+        // Codex's release train and rejects current models with "requires a
+        // newer version of Codex". Omitting it skips the check entirely.
+        // `originator` is unchecked and free-form, so we identify honestly.
+        let mut builder = ClientBuilder::for_url(&(self.api_url.clone() + RESPONSES_API))?
+            .header("content-type", "application/json")?
+            .header("accept", "text/event-stream")?
+            .header("authorization", &authorization)?
+            .header("openai-beta", "responses=experimental")?
+            .header("originator", "llm_stream")?;
+
+        if let Some(account_id) = self.auth.account_id.as_deref() {
+            builder = builder.header("chatgpt-account-id", account_id)?;
+        }
+
+        Ok(builder
+            .method("POST".to_string())
+            .body(request_body.to_string())
+            .reconnect(
+                ReconnectOptions::reconnect(true)
+                    .retry_initial(false)
+                    .delay(Duration::from_secs(1))
+                    .backoff_factor(2)
+                    .delay_max(Duration::from_secs(60))
+                    .build(),
+            )
+            .build())
+    }
+
+    /// Streams just the answer text. Every other event type collapses to an
+    /// empty string, which the CLI's stream handler prints as nothing.
+    pub fn delta<'a>(
+        &'a self,
+        message_body: &'a MessageBody,
+    ) -> Result<impl Stream<Item = Result<String, Error>> + 'a, Error> {
+        log::debug!("message_body: {message_body:#?}");
+
+        let client = self.request(message_body)?;
+
+        let stream = Box::pin(client.stream())
+            .map_err(Error::from)
+            .map_ok(|event| match event {
+                SSE::Event(ev) => match classify(&ev.data) {
+                    ResponseEvent::OutputTextDelta { delta } => delta,
+                    _ => String::new(),
+                },
+                SSE::Connected(_) => String::new(),
+                SSE::Comment(comment) => {
+                    log::debug!("comment: {comment}");
+                    String::new()
+                }
+            });
+
+        Ok(stream)
     }
 }
 
