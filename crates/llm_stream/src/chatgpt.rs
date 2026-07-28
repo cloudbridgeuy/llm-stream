@@ -4,6 +4,7 @@
 //! than a metered API key. Credentials come from `crate::auth`, which
 //! `--login` populates.
 
+use cli_table::{format::Justify, Color, Table};
 use llm_stream::chatgpt as api;
 
 use crate::prelude::*;
@@ -157,6 +158,51 @@ pub const fn is_end_of_stream(error: &llm_stream::error::Error) -> bool {
     matches!(
         error,
         llm_stream::error::Error::EventsourceClient(llm_stream::error::EventsourceError::Eof)
+    )
+}
+
+/// The longest server sentence a status cell will carry.
+///
+/// The table is a summary. One 400-character rejection would reflow every other
+/// row into unreadability, and the operator can always reproduce the full
+/// message by running the model for real.
+const STATUS_WIDTH: usize = 120;
+
+/// One row of the `--models` table.
+#[derive(Table)]
+pub struct ModelLine {
+    #[table(title = "Model", justify = "Justify::Left", color = "Color::Cyan")]
+    pub model: String,
+    #[table(title = "Status", justify = "Justify::Left")]
+    pub status: String,
+}
+
+/// Renders one probed model as a table row.
+#[must_use]
+pub fn model_line(model: &str, probe: &Probe) -> ModelLine {
+    let status = match probe {
+        Probe::Accepted => "OK".to_string(),
+        Probe::Refused(message) => message.chars().take(STATUS_WIDTH).collect(),
+        Probe::NoAnswer => "no answer".to_string(),
+    };
+
+    ModelLine {
+        model: model.to_owned(),
+        status,
+    }
+}
+
+/// The line printed before any probing starts.
+///
+/// Probing is not free: every accepted probe opens a real request against the
+/// operator's subscription — the same allowance their ChatGPT app draws on, not
+/// a metered key they topped up on purpose. Spending that without saying so
+/// first is the one way this command can do harm, so this goes to stderr before
+/// the first connection opens.
+#[must_use]
+pub fn probe_warning(count: usize) -> String {
+    format!(
+        "probing {count} models one at a time — each accepted probe spends a small amount of subscription quota"
     )
 }
 
@@ -528,5 +574,46 @@ mod tests {
         assert!(!is_end_of_stream(&llm_stream::error::Error::ApiError(
             "nope".to_string()
         )));
+    }
+
+    #[test]
+    fn an_accepted_model_reads_as_ok() {
+        assert_eq!(model_line("gpt-5.6-sol", &Probe::Accepted).status, "OK");
+    }
+
+    #[test]
+    fn a_refused_model_shows_the_sentence_not_a_status_code() {
+        let sentence =
+            "The 'gpt-4o' model is not supported when using Codex with a ChatGPT account.";
+        let line = model_line("gpt-4o", &Probe::Refused(sentence.to_string()));
+        assert_eq!(line.status, sentence);
+    }
+
+    #[test]
+    fn a_model_that_said_nothing_says_so() {
+        assert_eq!(model_line("gpt-5.5", &Probe::NoAnswer).status, "no answer");
+    }
+
+    #[test]
+    fn a_very_long_refusal_is_cut_to_one_cell() {
+        let line = model_line("m", &Probe::Refused("x".repeat(400)));
+        assert_eq!(line.status.chars().count(), STATUS_WIDTH);
+    }
+
+    #[test]
+    fn the_row_carries_the_slug_verbatim() {
+        // The point of the table is that the operator can copy a slug straight
+        // into `--model`.
+        assert_eq!(model_line("gpt-5.6-terra", &Probe::Accepted).model, "gpt-5.6-terra");
+    }
+
+    #[test]
+    fn the_warning_names_the_count_and_the_cost() {
+        let warning = probe_warning(8);
+        assert!(warning.contains('8'), "got: {warning}");
+        assert!(
+            warning.contains("quota"),
+            "the operator cannot consent to a cost this line does not mention: {warning}"
+        );
     }
 }
