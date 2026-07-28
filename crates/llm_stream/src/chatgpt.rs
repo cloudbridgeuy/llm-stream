@@ -14,6 +14,35 @@ use crate::prelude::*;
 /// models. `--model` is passed through verbatim.
 pub const DEFAULT_MODEL: &str = "gpt-5.6-sol";
 
+/// Printed when the operator passes sampling flags this endpoint discards.
+pub const SAMPLING_WARNING: &str =
+    "warning: the chatgpt provider discards --temperature, --top-p, and --top-k; \
+     use --reasoning-effort instead";
+
+/// Printed when the operator passes API-key flags this provider does not use.
+pub const CREDENTIAL_WARNING: &str =
+    "warning: the chatgpt provider uses subscription credentials; \
+     --api-key and --api-env are ignored (see --login)";
+
+/// Lists the warnings the operator should see for flags that carry no meaning
+/// for this provider.
+///
+/// Pure so the decision is testable; `run` does the printing.
+#[must_use]
+pub fn inert_flag_warnings(args: &Args) -> Vec<&'static str> {
+    let mut warnings = Vec::new();
+
+    if args.temperature.is_some() || args.top_p.is_some() || args.top_k.is_some() {
+        warnings.push(SAMPLING_WARNING);
+    }
+
+    if args.api_key.is_some() || args.api_env.is_some() {
+        warnings.push(CREDENTIAL_WARNING);
+    }
+
+    warnings
+}
+
 /// A conversation split the way the Responses API wants it.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct MappedConversation {
@@ -70,6 +99,10 @@ pub fn map_conversation(
 
 /// Streams an answer from a `ChatGPT` subscription.
 pub async fn run(mut args: Args) -> Result<()> {
+    for warning in inert_flag_warnings(&args) {
+        eprintln!("{warning}");
+    }
+
     let config_dir = args
         .config_dir
         .clone()
@@ -183,5 +216,51 @@ mod tests {
         let m = map_conversation(&vec![], None);
         assert!(m.instructions.is_none());
         assert!(m.input.is_empty());
+    }
+
+    #[test]
+    fn no_warnings_for_a_plain_invocation() {
+        assert!(inert_flag_warnings(&Args::default()).is_empty());
+    }
+
+    #[test]
+    fn sampling_flags_warn_once_between_them() {
+        let args = Args {
+            temperature: Some(0.2),
+            top_p: Some(0.9),
+            ..Default::default()
+        };
+        assert_eq!(inert_flag_warnings(&args), vec![SAMPLING_WARNING]);
+    }
+
+    #[test]
+    fn top_k_alone_warns() {
+        let args = Args {
+            top_k: Some(40),
+            ..Default::default()
+        };
+        assert_eq!(inert_flag_warnings(&args), vec![SAMPLING_WARNING]);
+    }
+
+    #[test]
+    fn credential_flags_warn_separately() {
+        let args = Args {
+            api_key: Some("sk-...".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(inert_flag_warnings(&args), vec![CREDENTIAL_WARNING]);
+    }
+
+    #[test]
+    fn both_categories_warn_in_order() {
+        let args = Args {
+            temperature: Some(0.2),
+            api_env: Some("OPENAI_API_KEY".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            inert_flag_warnings(&args),
+            vec![SAMPLING_WARNING, CREDENTIAL_WARNING]
+        );
     }
 }
