@@ -326,4 +326,9 @@ pub struct Args {
     #[clap(long, default_value = "false")]
     #[serde(skip_serializing, default)]
     pub logout: bool,
+
+    /// Probe which models the signed-in ChatGPT account can use.
+    #[clap(long, default_value = "false")]
+    #[serde(skip_serializing, default)]
+    pub models: bool,
 }

@@ -5,6 +5,7 @@
 //! `--login` populates.
 
 use cli_table::{format::Justify, Color, Table};
+use futures::stream::TryStreamExt;
 use llm_stream::chatgpt as api;
 
 use crate::prelude::*;
@@ -338,6 +339,76 @@ pub async fn reason(mut args: Args) -> Result<()> {
     let stream = prepared.client.reason(&prepared.body)?;
 
     handle_reason_stream(stream, args).await
+}
+
+/// Opens a stream for one model and reads exactly one event off it.
+///
+/// The request is deliberately minimal — no instructions, no reasoning field,
+/// no cache key. A probe asks "may this account use this model", not "does my
+/// configuration work", so nothing from the operator's config is allowed to
+/// influence the answer.
+///
+/// One event is enough, and taking only one is the point: the stream is dropped
+/// immediately afterwards, which cancels generation, so a probe costs a
+/// fraction of a real turn.
+async fn probe_one(client: &api::Client, model: &str) -> Probe {
+    // `body` must outlive `stream`, which borrows it. Declaration order gives
+    // that: locals drop in reverse.
+    let body = api::MessageBody::new(model, vec![api::InputItem::user("hi")]);
+
+    let mut stream = match client.delta(&body) {
+        Ok(stream) => stream,
+        Err(error) => return Probe::Refused(crate::error::user_message(&Error::from(error))),
+    };
+
+    let first = match stream.try_next().await {
+        Ok(Some(_)) => Some(Ok(())),
+        Ok(None) => None,
+        Err(error) if is_end_of_stream(&error) => None,
+        Err(error) => Some(Err(crate::error::user_message(&Error::from(error)))),
+    };
+
+    probe_of(first)
+}
+
+/// Asks the server, one model at a time, which of [`CANDIDATE_MODELS`] this
+/// account may use, and prints the answers as a table.
+///
+/// This is a query, not a command: it shares no code with the streaming path
+/// beyond the client itself, and it succeeds even when every model is refused —
+/// "none of them" is an answer. Only a failure to *ask* (no credentials, no
+/// network) is an error.
+///
+/// Probing is sequential on purpose. Eight simultaneous requests against one
+/// subscription invites rate limiting and is a rude thing to do to a private
+/// endpoint; the cost is a few seconds, which the warning line prepares the
+/// operator for.
+pub async fn probe_models(args: Args) -> Result<()> {
+    let config_dir = args
+        .config_dir
+        .clone()
+        .ok_or_else(|| Error::Auth("the config directory was not resolved".to_string()))?;
+
+    let tokens = crate::auth::flow::ensure_valid(std::path::Path::new(&config_dir))?;
+
+    let url = args
+        .api_base_url
+        .clone()
+        .unwrap_or_else(|| api::DEFAULT_URL.to_string());
+
+    let client = api::Client::new(api::Auth::new(tokens.access_token, tokens.account_id), url);
+
+    // Before the first connection, never after.
+    eprintln!("{}", probe_warning(CANDIDATE_MODELS.len()));
+
+    let mut lines = Vec::with_capacity(CANDIDATE_MODELS.len());
+
+    for model in CANDIDATE_MODELS {
+        log::info!("probing {model}");
+        lines.push(model_line(model, &probe_one(&client, model).await));
+    }
+
+    print_table(lines, args.no_color)
 }
 
 #[cfg(test)]

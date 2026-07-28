@@ -91,6 +91,16 @@ async fn try_main() -> Result<()> {
         return Ok(());
     }
 
+    // Dispatched here, with the auth flags, rather than after `build_config`:
+    // `parse_args` reads stdin when stdin is not a terminal, and
+    // `echo x | llm-stream --models` has no prompt for it to read. The cost is
+    // that `--models` sees only command-line values — a `base_url` in
+    // `config.toml` is not consulted, which is fine for a command that targets
+    // one specific endpoint by construction.
+    if args.models {
+        return chatgpt::probe_models(args).await;
+    }
+
     args.config_file = if let Some(config_file) = args.config_file {
         Some(config_file.clone().replace('~', &home))
     } else {
