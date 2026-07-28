@@ -8,6 +8,7 @@ use tempfile::tempdir;
 mod anthropic;
 mod args;
 mod auth;
+mod chatgpt;
 mod config;
 mod conversation;
 mod error;
