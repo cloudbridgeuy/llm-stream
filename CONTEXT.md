@@ -120,6 +120,13 @@ The config file's top-level `reasoning_effort`, and a preset's `reasoning_effort
 - **WHEN** the operator passes `--reasoning-effort` and the config file or preset also sets one
 - **THEN** the flag's value is used
 
+### Requirement: Reasoning stream separator
+Any provider whose stream can carry both a reasoning summary and answer text (`chatgpt --reasoning-summary`, and `--api deepseek`, which always streams reasoning) prints the `---` rule to stderr, and only when reasoning text actually arrived — never to stdout, and never when the stream carried no reasoning.
+
+#### Scenario: DeepSeek's answer stream has no stray separator
+- **WHEN** the operator runs `llm-stream --api deepseek "<prompt>" | cat`
+- **THEN** stdout contains only the answer, with no leading `---`
+
 ### Requirement: Provider-scoped config defaults
 The config file's top-level `base_url`, `env`, `key`, `version`, and `model` defaults describe one specific provider and are only inherited when the config file's own `api` matches the provider selected via `--api`, or no `--api` flag was given.
 
