@@ -1,4 +1,4 @@
-use cli_table::{format::Justify, print_stdout, Color, ColorChoice, Table, WithTitle};
+use cli_table::{format::Justify, print_stdout, Color, ColorChoice, Row, Table, Title, WithTitle};
 use config_file::FromConfigFile;
 use futures::stream::{Stream, TryStreamExt};
 use serde_json::Value;
@@ -1183,6 +1183,54 @@ fn get_sorted_cache_files(cache_dir: &str) -> Result<Vec<std::path::PathBuf>> {
     Ok(cache_files)
 }
 
+/// Prints a list of rows as the table every listing command in this CLI shares.
+///
+/// Titles and colour are suppressed when stdout is not a terminal: piping
+/// `--list` into another program should hand it data, not a header row and
+/// escape codes. `--no-color` suppresses colour on a terminal too.
+///
+/// The `for<'a> &'a T: Row` bound is not decoration. `cli_table::WithTitle` is
+/// implemented for `&Vec<T>` and `cli_table::Table` for `Vec<T>`; the call
+/// sites relied on auto-ref to paper over that, and a generic function has to
+/// name both.
+pub fn print_table<T>(lines: Vec<T>, no_color: bool) -> Result<()>
+where
+    T: Row + Title + 'static,
+    for<'a> &'a T: Row,
+{
+    let is_terminal: bool = atty::is(atty::Stream::Stdout);
+
+    let table = if is_terminal {
+        lines.with_title()
+    } else {
+        lines.table()
+    };
+
+    let vert_line = cli_table::format::VerticalLine::new(' ');
+    let horz_line = cli_table::format::HorizontalLine::new(' ', ' ', ' ', ' ');
+    let border = cli_table::format::Border::builder()
+        .top(horz_line)
+        .bottom(horz_line)
+        .left(vert_line)
+        .right(vert_line)
+        .build();
+    let separator = cli_table::format::Separator::builder()
+        .row(None)
+        .column(None)
+        .title(None)
+        .build();
+
+    print_stdout(table.separator(separator).border(border).color_choice(
+        if no_color || !is_terminal {
+            ColorChoice::Never
+        } else {
+            ColorChoice::Always
+        },
+    ))?;
+
+    Ok(())
+}
+
 /// Prints a list of existing conversations
 pub fn list(args: Args) -> Result<()> {
     let config_dir = args.config_dir.clone().expect("can't find cache directory");
@@ -1232,37 +1280,7 @@ pub fn list(args: Args) -> Result<()> {
         })
         .collect::<Vec<ConversationLine>>();
 
-    let is_terminal: bool = atty::is(atty::Stream::Stdout);
-
-    let table = if is_terminal {
-        lines.with_title()
-    } else {
-        lines.table()
-    };
-
-    let vert_line = cli_table::format::VerticalLine::new(' ');
-    let horz_line = cli_table::format::HorizontalLine::new(' ', ' ', ' ', ' ');
-    let border = cli_table::format::Border::builder()
-        .top(horz_line)
-        .bottom(horz_line)
-        .left(vert_line)
-        .right(vert_line)
-        .build();
-    let separator = cli_table::format::Separator::builder()
-        .row(None)
-        .column(None)
-        .title(None)
-        .build();
-
-    print_stdout(table.separator(separator).border(border).color_choice(
-        if args.no_color || !is_terminal {
-            ColorChoice::Never
-        } else {
-            ColorChoice::Always
-        },
-    ))?;
-
-    Ok(())
+    print_table(lines, args.no_color)
 }
 
 /// Prints the given conversation to stdout
@@ -1297,70 +1315,12 @@ pub fn show(args: Args) -> Result<()> {
 
 /// Prints the presets table to `stdout`.
 pub fn presets(lines: Vec<PresetLine>, no_color: bool) -> Result<()> {
-    let is_terminal: bool = atty::is(atty::Stream::Stdout);
-    let table = if is_terminal {
-        lines.with_title()
-    } else {
-        lines.table()
-    };
-
-    let vert_line = cli_table::format::VerticalLine::new(' ');
-    let horz_line = cli_table::format::HorizontalLine::new(' ', ' ', ' ', ' ');
-    let border = cli_table::format::Border::builder()
-        .top(horz_line)
-        .bottom(horz_line)
-        .left(vert_line)
-        .right(vert_line)
-        .build();
-    let separator = cli_table::format::Separator::builder()
-        .row(None)
-        .column(None)
-        .title(None)
-        .build();
-
-    print_stdout(table.separator(separator).border(border).color_choice(
-        if no_color || !is_terminal {
-            ColorChoice::Never
-        } else {
-            ColorChoice::Always
-        },
-    ))?;
-
-    Ok(())
+    print_table(lines, no_color)
 }
 
 /// Prints the templates table to `stdout`.
 pub fn templates(lines: Vec<TemplateLine>, no_color: bool) -> Result<()> {
-    let is_terminal: bool = atty::is(atty::Stream::Stdout);
-    let table = if is_terminal {
-        lines.with_title()
-    } else {
-        lines.table()
-    };
-
-    let vert_line = cli_table::format::VerticalLine::new(' ');
-    let horz_line = cli_table::format::HorizontalLine::new(' ', ' ', ' ', ' ');
-    let border = cli_table::format::Border::builder()
-        .top(horz_line)
-        .bottom(horz_line)
-        .left(vert_line)
-        .right(vert_line)
-        .build();
-    let separator = cli_table::format::Separator::builder()
-        .row(None)
-        .column(None)
-        .title(None)
-        .build();
-
-    print_stdout(table.separator(separator).border(border).color_choice(
-        if no_color || !is_terminal {
-            ColorChoice::Never
-        } else {
-            ColorChoice::Always
-        },
-    ))?;
-
-    Ok(())
+    print_table(lines, no_color)
 }
 
 /// Whether the `---` rule between the reasoning summary and the answer is still
