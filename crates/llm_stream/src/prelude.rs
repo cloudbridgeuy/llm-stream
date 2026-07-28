@@ -1408,9 +1408,8 @@ pub const fn on_answer(state: Separator) -> (Separator, bool) {
 
 /// Handles a reasoning stream of text from the LLM and prints it to the terminal.
 pub async fn handle_reason_stream(
-    mut stream: impl Stream<
-            Item = std::result::Result<llm_stream::event::ReasonEvent, llm_stream::error::Error>,
-        > + std::marker::Unpin,
+    mut stream: impl Stream<Item = std::result::Result<llm_stream::event::ReasonEvent, llm_stream::error::Error>>
+        + std::marker::Unpin,
     mut args: Args,
 ) -> Result<()> {
     let mut accumulated_text = String::new();

@@ -89,6 +89,37 @@ Running `llm-stream --api chatgpt` sends the prompt, and any conversation histor
 - **THEN** the CLI prints a warning to stderr that the flag is ignored by this provider
 - **AND** the answer still streams to stdout as normal
 
+#### Scenario: Reasoning effort
+- **WHEN** the operator runs `llm-stream --api chatgpt --reasoning-effort <low|medium|high|xhigh> "<prompt>"`
+- **THEN** the request asks the model for that level of effort
+- **AND** the answer streams to stdout as normal, with no reasoning summary
+
+#### Scenario: Reasoning summary
+- **WHEN** the operator runs `llm-stream --api chatgpt --reasoning-summary "<prompt>"`
+- **THEN** the model's reasoning summary, if it produces one, streams to stderr
+- **AND** a `---` rule is printed to stderr between the summary and the answer
+- **AND** the answer streams to stdout
+
+#### Scenario: Reasoning summary the model declines to produce
+- **WHEN** the operator runs `llm-stream --api chatgpt --reasoning-summary "<prompt>"` and the model produces no summary
+- **THEN** no `---` rule is printed
+- **AND** the answer streams to stdout unchanged
+
+#### Scenario: Unrecognised reasoning effort in the config file
+- **WHEN** the config file or the selected preset sets `reasoning_effort` to a value that is not `low`, `medium`, `high`, or `xhigh`
+- **THEN** the CLI errors with `unknown reasoning effort "<value>"; expected one of: low, medium, high, xhigh` and streams nothing
+
+### Requirement: Reasoning effort defaults
+The config file's top-level `reasoning_effort`, and a preset's `reasoning_effort`, supply the value when `--reasoning-effort` is not given.
+
+#### Scenario: Config file default
+- **WHEN** the operator runs `llm-stream --api chatgpt "<prompt>"` without `--reasoning-effort`, and the config file sets `reasoning_effort`
+- **THEN** the configured value is used, regardless of which provider the config file's own `api` names
+
+#### Scenario: Explicit flag wins
+- **WHEN** the operator passes `--reasoning-effort` and the config file or preset also sets one
+- **THEN** the flag's value is used
+
 ### Requirement: Provider-scoped config defaults
 The config file's top-level `base_url`, `env`, `key`, `version`, and `model` defaults describe one specific provider and are only inherited when the config file's own `api` matches the provider selected via `--api`, or no `--api` flag was given.
 
