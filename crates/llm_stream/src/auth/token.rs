@@ -2,7 +2,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// The claim namespace OpenAI uses for ChatGPT-specific fields in the ID token.
+/// The claim namespace `OpenAI` uses for ChatGPT-specific fields in the ID token.
 const AUTH_CLAIM: &str = "https://api.openai.com/auth";
 
 #[derive(Debug, thiserror::Error)]
@@ -65,7 +65,7 @@ pub fn account_info(id_token: &str) -> std::result::Result<AccountInfo, TokenErr
     })
 }
 
-/// Reads the ChatGPT account id, which a later slice sends as a request header.
+/// Reads the `ChatGPT` account id, which a later slice sends as a request header.
 /// Absence is normal, so this returns `Option` rather than `Result`.
 pub fn account_id_of(id_token: &str) -> Option<String> {
     decode_payload(id_token)
@@ -142,7 +142,6 @@ pub fn classify(tokens: Option<TokenSet>, now: SystemTime) -> AuthState {
 mod tests {
     use super::*;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use base64::Engine as _;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     /// Builds a syntactically valid JWT around an arbitrary payload. The
@@ -161,7 +160,10 @@ mod tests {
 
     #[test]
     fn expiry_rejects_malformed_jwts() {
-        assert!(matches!(expiry_of("not-a-jwt"), Err(TokenError::MalformedJwt)));
+        assert!(matches!(
+            expiry_of("not-a-jwt"),
+            Err(TokenError::MalformedJwt)
+        ));
         assert!(matches!(expiry_of("a.b"), Err(TokenError::MalformedJwt)));
         assert!(matches!(
             expiry_of("a.!!!notbase64!!!.c"),
@@ -180,9 +182,8 @@ mod tests {
 
     #[test]
     fn account_info_reads_email_and_plan() {
-        let t = jwt(
-            r#"{"email":"x@y.z","https://api.openai.com/auth":{"chatgpt_plan_type":"plus"}}"#,
-        );
+        let t =
+            jwt(r#"{"email":"x@y.z","https://api.openai.com/auth":{"chatgpt_plan_type":"plus"}}"#);
         let info = account_info(&t).expect("should parse");
         assert_eq!(info.email.as_deref(), Some("x@y.z"));
         assert_eq!(info.plan_type.as_deref(), Some("plus"));
@@ -226,7 +227,10 @@ mod tests {
         let id = jwt(r#"{"https://api.openai.com/auth":{"chatgpt_account_id":"acct_9"}}"#);
         let json = format!(r#"{{"access_token":"a","refresh_token":"r","id_token":"{id}"}}"#);
         assert_eq!(
-            parse_token_response(&json).expect("should parse").account_id.as_deref(),
+            parse_token_response(&json)
+                .expect("should parse")
+                .account_id
+                .as_deref(),
             Some("acct_9")
         );
     }
@@ -247,7 +251,10 @@ mod tests {
 
     #[test]
     fn classify_none_is_missing() {
-        assert!(matches!(classify(None, SystemTime::now()), AuthState::Missing));
+        assert!(matches!(
+            classify(None, SystemTime::now()),
+            AuthState::Missing
+        ));
     }
 
     #[test]

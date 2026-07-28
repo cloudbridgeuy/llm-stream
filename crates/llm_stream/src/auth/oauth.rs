@@ -1,4 +1,4 @@
-/// OAuth client registration used by OpenAI's Codex CLI.
+/// OAuth client registration used by `OpenAI`'s Codex CLI.
 ///
 /// Every value below was read out of the Codex binary and cross-checked: the
 /// scope string matches the `scp` claim of a live access token exactly. Do not
@@ -14,14 +14,15 @@ pub const SCOPE: &str =
 pub const ORIGINATOR: &str = "llm_stream";
 
 /// Percent-encodes per RFC 3986: everything outside `A-Za-z0-9-._~` becomes `%XX`.
-pub(crate) fn percent_encode(input: &str) -> String {
+pub fn percent_encode(input: &str) -> String {
+    use std::fmt::Write as _;
+
     let mut out = String::with_capacity(input.len());
     for b in input.bytes() {
         if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
             out.push(b as char);
         } else {
-            out.push('%');
-            out.push_str(&format!("{b:02X}"));
+            let _ = write!(out, "%{b:02X}");
         }
     }
     out
@@ -30,7 +31,7 @@ pub(crate) fn percent_encode(input: &str) -> String {
 /// Decodes `%XX` triplets and `+` as space. A malformed escape is passed
 /// through literally rather than dropped: we would rather show the operator a
 /// stray `%` than silently corrupt an authorization code.
-pub(crate) fn percent_decode(input: &str) -> String {
+pub fn percent_decode(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -44,15 +45,12 @@ pub(crate) fn percent_decode(input: &str) -> String {
                 let decoded = std::str::from_utf8(&bytes[i + 1..i + 3])
                     .ok()
                     .and_then(|hex| u8::from_str_radix(hex, 16).ok());
-                match decoded {
-                    Some(v) => {
-                        out.push(v);
-                        i += 3;
-                    }
-                    None => {
-                        out.push(b'%');
-                        i += 1;
-                    }
+                if let Some(v) = decoded {
+                    out.push(v);
+                    i += 3;
+                } else {
+                    out.push(b'%');
+                    i += 1;
                 }
             }
             b => {
@@ -259,8 +257,8 @@ mod tests {
 
     #[test]
     fn parse_callback_ignores_unknown_parameters() {
-        let code =
-            parse_callback("iss=https%3A%2F%2Fx&code=abc&state=st4te", "st4te").expect("should parse");
+        let code = parse_callback("iss=https%3A%2F%2Fx&code=abc&state=st4te", "st4te")
+            .expect("should parse");
         assert_eq!(code.as_str(), "abc");
     }
 }

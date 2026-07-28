@@ -1,4 +1,4 @@
-//! ChatGPT subscription authentication.
+//! `ChatGPT` subscription authentication.
 //!
 //! `pkce`, `oauth`, and `token` are a pure functional core: total functions over
 //! values, no I/O, no clock. `store`, `listener`, and `flow` are the imperative

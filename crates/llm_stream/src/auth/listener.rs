@@ -6,7 +6,7 @@ use crate::error::Error;
 use crate::prelude::Result;
 
 /// The port Codex registers for its loopback redirect. We try it first because
-/// OpenAI's client registration may pin the redirect URI to it.
+/// `OpenAI`'s client registration may pin the redirect URI to it.
 pub const PREFERRED_PORT: u16 = 1455;
 
 pub struct CallbackListener {
@@ -134,8 +134,7 @@ mod tests {
         let listener = bind().expect("bind");
         let port = listener.port().expect("port");
         std::thread::spawn(move || {
-            let mut socket =
-                std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+            let mut socket = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
             write!(
                 socket,
                 "GET /auth/callback?code=xyz&state=st HTTP/1.1\r\nHost: localhost\r\n\r\n"
@@ -150,8 +149,7 @@ mod tests {
         let listener = bind().expect("bind");
         let port = listener.port().expect("port");
         std::thread::spawn(move || {
-            let mut socket =
-                std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+            let mut socket = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
             write!(
                 socket,
                 "GET /auth/callback?code=xyz&state=wrong HTTP/1.1\r\nHost: localhost\r\n\r\n"
