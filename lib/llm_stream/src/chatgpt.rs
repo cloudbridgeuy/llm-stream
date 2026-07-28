@@ -390,6 +390,36 @@ impl Client {
         // Boxed so the result is `Unpin` — see the note on `or_else` above.
         Ok(Box::pin(stream))
     }
+
+    /// Streams the answer *and* the reasoning summary as separate events.
+    ///
+    /// Same connection, same headers, same error mapping as [`Client::delta`] —
+    /// the only difference is that events are projected through the pure
+    /// [`to_reason_event`] instead of being flattened to text, so the caller can
+    /// tell a summary token from an answer token.
+    ///
+    /// A stream may carry **zero** reasoning events even when the request asked
+    /// for a summary: the model decides. Callers must not assume otherwise.
+    pub fn reason<'a>(
+        &'a self,
+        message_body: &'a MessageBody,
+    ) -> Result<impl Stream<Item = Result<ReasonEvent, Error>> + 'a, Error> {
+        log::debug!("message_body: {message_body:#?}");
+
+        let client = self.request(message_body)?;
+
+        let stream = Box::pin(client.stream())
+            .or_else(|error| async move { Err(map_stream_error(error).await) })
+            .map_ok(|event| match event {
+                SSE::Event(ev) => to_reason_event(classify(&ev.data)),
+                SSE::Connected(_) => ReasonEvent::Connected,
+                SSE::Comment(comment) => ReasonEvent::Comment(comment),
+            });
+
+        // Boxed so the result is `Unpin` — `or_else` with an async block is not,
+        // and the CLI's stream handlers require it.
+        Ok(Box::pin(stream))
+    }
 }
 
 #[cfg(test)]
