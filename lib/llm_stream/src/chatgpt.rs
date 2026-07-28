@@ -278,6 +278,40 @@ impl Auth {
     }
 }
 
+/// Turns a transport error into ours, reading the response body when the server
+/// rejected the request outright.
+///
+/// This is the impure half: it awaits the body off the wire. All of the
+/// deciding lives in [`detail_of`], which is pure and tested.
+async fn map_stream_error(error: eventsource_client::Error) -> Error {
+    let eventsource_client::Error::UnexpectedResponse(response, body) = error else {
+        return Error::from(error);
+    };
+
+    let status = response.status();
+
+    match body.body_bytes().await {
+        Ok(bytes) => {
+            let raw = String::from_utf8_lossy(&bytes).into_owned();
+            detail_of(&raw).map_or_else(
+                || {
+                    if raw.trim().is_empty() {
+                        Error::ApiError(format!("HTTP {status}"))
+                    } else {
+                        // No sentence we recognise — better the raw body than
+                        // nothing, since the operator has to act on it.
+                        Error::ApiError(format!("HTTP {status}: {raw}"))
+                    }
+                },
+                Error::ApiError,
+            )
+        }
+        Err(read_error) => Error::ApiError(format!(
+            "HTTP {status} (response body could not be read: {read_error})"
+        )),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Client {
     pub auth: Auth,
@@ -340,7 +374,7 @@ impl Client {
         let client = self.request(message_body)?;
 
         let stream = Box::pin(client.stream())
-            .map_err(Error::from)
+            .or_else(|error| async move { Err(map_stream_error(error).await) })
             .map_ok(|event| match event {
                 SSE::Event(ev) => match classify(&ev.data) {
                     ResponseEvent::OutputTextDelta { delta } => delta,
@@ -353,7 +387,8 @@ impl Client {
                 }
             });
 
-        Ok(stream)
+        // Boxed so the result is `Unpin` — see the note on `or_else` above.
+        Ok(Box::pin(stream))
     }
 }
 
