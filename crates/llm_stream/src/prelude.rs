@@ -1363,10 +1363,53 @@ pub fn templates(lines: Vec<TemplateLine>, no_color: bool) -> Result<()> {
     Ok(())
 }
 
+/// Whether the `---` rule between the reasoning summary and the answer is still
+/// owed to the operator.
+///
+/// This replaces a single `bool`, which had to mean both "no reasoning has
+/// arrived" and "a separator is owed" — and defaulted to the second, so a
+/// stream with no reasoning at all printed a rule that separated nothing. A
+/// stream *can* carry zero reasoning events even when one was requested: the
+/// model decides whether to summarise. Measured live, `effort=low,
+/// summary=auto` produced none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Separator {
+    /// No reasoning has arrived. There is nothing to separate.
+    #[default]
+    NotNeeded,
+    /// Reasoning arrived and the answer has not started. Print on first delta.
+    Owed,
+    /// Already resolved. Never print again.
+    Printed,
+}
+
+/// A reasoning delta arrived.
+#[must_use]
+pub const fn on_reasoning(state: Separator) -> Separator {
+    match state {
+        // Reasoning that trails the answer does not re-open the summary; the
+        // rule would land in the middle of a sentence.
+        Separator::Printed => Separator::Printed,
+        Separator::NotNeeded | Separator::Owed => Separator::Owed,
+    }
+}
+
+/// An answer delta arrived. Returns the next state and whether to print the rule
+/// right now.
+#[must_use]
+pub const fn on_answer(state: Separator) -> (Separator, bool) {
+    match state {
+        Separator::Owed => (Separator::Printed, true),
+        // Once the answer has begun the question is settled either way, so a
+        // later reasoning event cannot reopen it.
+        Separator::NotNeeded | Separator::Printed => (Separator::Printed, false),
+    }
+}
+
 /// Handles a reasoning stream of text from the LLM and prints it to the terminal.
 pub async fn handle_reason_stream(
     mut stream: impl Stream<
-            Item = std::result::Result<llm_stream::openai::ReasonEvent, llm_stream::error::Error>,
+            Item = std::result::Result<llm_stream::event::ReasonEvent, llm_stream::error::Error>,
         > + std::marker::Unpin,
     mut args: Args,
 ) -> Result<()> {
@@ -1384,14 +1427,14 @@ pub async fn handle_reason_stream(
         None
     };
 
-    let mut reasoning = true;
+    let mut separator = Separator::default();
 
     loop {
         let result = stream.try_next().await;
 
         match result {
             Ok(Some(event)) => match event {
-                llm_stream::openai::ReasonEvent::Delta(text) => {
+                llm_stream::event::ReasonEvent::Delta(text) => {
                     if is_terminal && sp.is_some() {
                         // TODO: Find a better way to clean the spinner from the terminal.
                         sp.take().unwrap().stop();
@@ -1401,9 +1444,13 @@ pub async fn handle_reason_stream(
                         crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
                     }
 
-                    if reasoning {
-                        print!("\n\n---\n\n");
-                        reasoning = false;
+                    let (next, print_separator) = on_answer(separator);
+                    separator = next;
+                    if print_separator {
+                        // stderr, beside the reasoning it separates — stdout
+                        // stays the answer and only the answer, so piping works.
+                        eprint!("\n\n---\n\n");
+                        std::io::stderr().flush()?;
                     }
 
                     if !is_terminal {
@@ -1431,7 +1478,7 @@ pub async fn handle_reason_stream(
                     // Update the previous output
                     previous_output = output;
                 }
-                llm_stream::openai::ReasonEvent::Reasoning(text) => {
+                llm_stream::event::ReasonEvent::Reasoning(text) => {
                     if is_terminal && sp.is_some() {
                         // TODO: Find a better way to clean the spinner from the terminal.
                         sp.take().unwrap().stop();
@@ -1440,6 +1487,7 @@ pub async fn handle_reason_stream(
                         print!("                      ");
                         crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
                     }
+                    separator = on_reasoning(separator);
                     eprint!("{}", text);
                 }
                 _ => log::debug!("{}", event),
@@ -1527,4 +1575,44 @@ pub async fn handle_reason_stream(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod separator_tests {
+    use super::{on_answer, on_reasoning, Separator};
+
+    #[test]
+    fn an_answer_with_no_reasoning_prints_no_rule() {
+        // The regression. Before the fix this printed unconditionally.
+        let (state, print) = on_answer(Separator::default());
+        assert!(!print, "printed a rule that separated nothing");
+        assert_eq!(state, Separator::Printed);
+    }
+
+    #[test]
+    fn reasoning_then_an_answer_prints_exactly_one_rule() {
+        let state = on_reasoning(on_reasoning(Separator::default()));
+        assert_eq!(state, Separator::Owed);
+
+        let (state, print) = on_answer(state);
+        assert!(print, "the summary ran straight into the answer");
+
+        let (_, print_again) = on_answer(state);
+        assert!(!print_again, "printed a second rule mid-answer");
+    }
+
+    #[test]
+    fn reasoning_after_the_answer_started_does_not_reopen_the_rule() {
+        let (state, _) = on_answer(Separator::default());
+        let state = on_reasoning(state);
+        let (_, print) = on_answer(state);
+        assert!(!print, "a trailing reasoning event cut the answer in half");
+    }
+
+    #[test]
+    fn a_stream_that_is_only_reasoning_leaves_the_rule_owed() {
+        // Owed, never printed: there is no answer to separate the summary from,
+        // so the stream ends with no rule. That is correct.
+        assert_eq!(on_reasoning(Separator::default()), Separator::Owed);
+    }
 }
