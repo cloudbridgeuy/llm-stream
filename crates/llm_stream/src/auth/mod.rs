@@ -5,7 +5,7 @@
 //! shell that binds them to sockets, files, and the network.
 
 // pub mod flow;
-// pub mod listener;
+pub mod listener;
 pub mod oauth;
 pub mod pkce;
 pub mod store;
