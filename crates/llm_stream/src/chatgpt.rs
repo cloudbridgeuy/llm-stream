@@ -149,12 +149,21 @@ pub fn map_conversation(
     }
 }
 
-/// Streams an answer from a `ChatGPT` subscription.
-pub async fn run(mut args: Args) -> Result<()> {
-    for warning in inert_flag_warnings(&args) {
-        eprintln!("{warning}");
-    }
+/// A resolved request: who we are, where we are sending it, and what it says.
+///
+/// `run` and `reason` differ only in which stream they ask for, so everything
+/// before that decision is built once, here.
+struct Prepared {
+    client: api::Client,
+    body: api::MessageBody,
+}
 
+/// Resolves credentials, endpoint, model, and request body from `args`.
+///
+/// The only impure part of this module: it reads the token store and may refresh
+/// an access token over the network. Every decision it makes is delegated to a
+/// pure function — `map_conversation` and `reasoning_of`.
+fn prepare(args: &mut Args) -> Result<Prepared> {
     let config_dir = args
         .config_dir
         .clone()
@@ -184,12 +193,40 @@ pub async fn run(mut args: Args) -> Result<()> {
     // `args.from` is `Some(id)` exactly when a conversation is being continued,
     // which is when a stable cache key is worth having.
     body.prompt_cache_key = args.from.clone();
+    body.reasoning = reasoning_of(args.reasoning_effort.as_deref(), args.reasoning_summary)
+        .map_err(Error::InvalidValue)?;
 
     log::info!("body: {body:#?}");
 
-    let stream = client.delta(&body)?;
+    Ok(Prepared { client, body })
+}
+
+/// Streams an answer from a `ChatGPT` subscription.
+pub async fn run(mut args: Args) -> Result<()> {
+    for warning in inert_flag_warnings(&args) {
+        eprintln!("{warning}");
+    }
+
+    let prepared = prepare(&mut args)?;
+    let stream = prepared.client.delta(&prepared.body)?;
 
     handle_stream(stream, args).await
+}
+
+/// Streams the model's reasoning summary to stderr, then its answer to stdout.
+///
+/// The summary may be empty — the model decides whether to produce one — in
+/// which case this behaves exactly like [`run`], separator included (there
+/// isn't one).
+pub async fn reason(mut args: Args) -> Result<()> {
+    for warning in inert_flag_warnings(&args) {
+        eprintln!("{warning}");
+    }
+
+    let prepared = prepare(&mut args)?;
+    let stream = prepared.client.reason(&prepared.body)?;
+
+    handle_reason_stream(stream, args).await
 }
 
 #[cfg(test)]
