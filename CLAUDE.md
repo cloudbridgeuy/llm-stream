@@ -38,6 +38,7 @@ This is a Rust workspace with three main components:
 - Features: conversation history, templates, presets, external editor support
 - Syntax highlighting using syntect with Tokyo Night themes
 - Streaming output with spinners and colored terminal output
+- ChatGPT subscription sign-in (`auth/` module): `--login`, `--login-status`, `--logout` — browser-based OAuth 2.0 + PKCE flow, credentials stored at `<config_dir>/auth.json` (mode `0600`)
 
 ### Build Tools (`xtask/`)
 - Custom build automation following the cargo-xtask pattern
