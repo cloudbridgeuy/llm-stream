@@ -28,6 +28,8 @@ pub enum Api {
     Groq,
     Mistral,
     MistralFim,
+    #[value(name = "chatgpt", alias = "chat-gpt", alias = "codex")]
+    ChatGpt,
 }
 
 // Implement Display for `Api`
@@ -42,6 +44,7 @@ impl std::fmt::Display for Api {
             Api::MistralFim => write!(f, "MistralFim"),
             Api::Ollama => write!(f, "Ollama"),
             Api::DeepSeek => write!(f, "DeepSeek"),
+            Api::ChatGpt => write!(f, "ChatGpt"),
         }
     }
 }
@@ -77,6 +80,11 @@ impl FromStr for Api {
             "deepseek" => Ok(Api::DeepSeek),
             "DeepSeek" => Ok(Api::DeepSeek),
             "Deepseek" => Ok(Api::DeepSeek),
+            "chatgpt" => Ok(Api::ChatGpt),
+            "ChatGpt" => Ok(Api::ChatGpt),
+            "ChatGPT" => Ok(Api::ChatGpt),
+            "chat-gpt" => Ok(Api::ChatGpt),
+            "codex" => Ok(Api::ChatGpt),
             _ => Err(Error::InvalidAPI),
         }
     }
