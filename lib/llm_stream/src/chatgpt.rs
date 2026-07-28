@@ -9,6 +9,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::event::ReasonEvent;
+
 /// Base URL of the private Codex backend a ChatGPT subscription can reach.
 pub const DEFAULT_URL: &str = "https://chatgpt.com/backend-api/codex";
 
@@ -191,6 +193,44 @@ impl MessageBody {
     }
 }
 
+/// One event off the Responses SSE stream, as one closed set of cases.
+///
+/// The `Unknown` arm is load-bearing. A live stream carries more than ten event
+/// types and OpenAI adds more without notice, so an unrecognised event must be
+/// inert rather than fatal.
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum ResponseEvent {
+    #[serde(rename = "response.output_text.delta")]
+    OutputTextDelta { delta: String },
+    #[serde(rename = "response.reasoning_summary_text.delta")]
+    ReasoningDelta { delta: String },
+    #[serde(rename = "response.completed")]
+    Completed,
+    #[serde(other)]
+    Unknown,
+}
+
+/// Reads one SSE `data:` payload.
+///
+/// Anything we do not recognise — a new event type, a truncated line, an empty
+/// payload — becomes `Unknown`. Returning a `Result` here would push the
+/// decision to every caller, and there is only one correct decision.
+#[must_use]
+pub fn classify(data: &str) -> ResponseEvent {
+    serde_json::from_str(data).unwrap_or(ResponseEvent::Unknown)
+}
+
+/// Projects a Responses event onto the provider-neutral event the CLI handles.
+#[must_use]
+pub fn to_reason_event(event: ResponseEvent) -> ReasonEvent {
+    match event {
+        ResponseEvent::OutputTextDelta { delta } => ReasonEvent::Delta(delta),
+        ResponseEvent::ReasoningDelta { delta } => ReasonEvent::Reasoning(delta),
+        ResponseEvent::Completed | ResponseEvent::Unknown => ReasonEvent::Empty,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,5 +293,71 @@ mod tests {
             content: vec![ContentPart::input_text("a"), ContentPart::input_text("b")],
         };
         assert_eq!(item.text(), "ab");
+    }
+
+    #[test]
+    fn classifies_output_text_delta() {
+        let ev = classify(include_str!("../tests/fixtures/output_text_delta.json"));
+        assert_eq!(
+            ev,
+            ResponseEvent::OutputTextDelta {
+                delta: "ONG".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn classifies_reasoning_summary_delta() {
+        let ev = classify(include_str!("../tests/fixtures/reasoning_summary_delta.json"));
+        assert!(
+            matches!(ev, ResponseEvent::ReasoningDelta { ref delta } if delta.contains("17 times 23")),
+            "got {ev:?}"
+        );
+    }
+
+    #[test]
+    fn classifies_completion_despite_extra_fields() {
+        // A unit variant on an internally tagged enum must ignore `response`.
+        let ev = classify(include_str!("../tests/fixtures/response_completed.json"));
+        assert_eq!(ev, ResponseEvent::Completed);
+    }
+
+    #[test]
+    fn unknown_event_types_are_inert() {
+        assert_eq!(
+            classify(include_str!("../tests/fixtures/unknown_event.json")),
+            ResponseEvent::Unknown
+        );
+        assert_eq!(
+            classify(include_str!("../tests/fixtures/output_item_reasoning.json")),
+            ResponseEvent::Unknown
+        );
+    }
+
+    #[test]
+    fn malformed_payloads_are_unknown_not_a_panic() {
+        assert_eq!(classify("{not json"), ResponseEvent::Unknown);
+        assert_eq!(classify(""), ResponseEvent::Unknown);
+        assert_eq!(classify("[DONE]"), ResponseEvent::Unknown);
+    }
+
+    #[test]
+    fn to_reason_event_maps_deltas_and_swallows_the_rest() {
+        assert!(matches!(
+            to_reason_event(ResponseEvent::OutputTextDelta { delta: "x".to_string() }),
+            ReasonEvent::Delta(ref s) if s == "x"
+        ));
+        assert!(matches!(
+            to_reason_event(ResponseEvent::ReasoningDelta { delta: "r".to_string() }),
+            ReasonEvent::Reasoning(ref s) if s == "r"
+        ));
+        assert!(matches!(
+            to_reason_event(ResponseEvent::Completed),
+            ReasonEvent::Empty
+        ));
+        assert!(matches!(
+            to_reason_event(ResponseEvent::Unknown),
+            ReasonEvent::Empty
+        ));
     }
 }
