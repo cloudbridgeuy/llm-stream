@@ -32,6 +32,10 @@ pub enum Error {
     Stdin(#[from] clap_stdin::StdinError),
     #[error("unable to stream the api")]
     EsStream(#[from] llm_stream::error::Error),
+    #[error("{0}")]
+    Auth(String),
+    #[error("http error: {0}")]
+    Http(String),
 }
 
 pub(crate) fn format_error(

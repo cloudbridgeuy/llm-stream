@@ -7,6 +7,7 @@ use tempfile::tempdir;
 
 mod anthropic;
 mod args;
+mod auth;
 mod config;
 mod conversation;
 mod error;
