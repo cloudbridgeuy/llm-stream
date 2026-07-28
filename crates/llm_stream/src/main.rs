@@ -208,6 +208,10 @@ async fn try_main() -> Result<()> {
         Some(Api::Ollama) => ollama::run(args).await,
         Some(Api::Groq) => groq::run(args).await,
         Some(Api::DeepSeek) => openai::reason(args).await,
+        // The guard must precede the plain arm; `match` takes the first that
+        // fits. This mirrors `Api::DeepSeek`, the other provider with a
+        // reasoning stream.
+        Some(Api::ChatGpt) if args.reasoning_summary => chatgpt::reason(args).await,
         Some(Api::ChatGpt) => chatgpt::run(args).await,
         None => Err(Error::ApiNotSpecified),
     }
