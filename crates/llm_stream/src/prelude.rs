@@ -333,6 +333,9 @@ pub fn parse_args(mut args: Args, config: Config) -> Result<(Args, Config)> {
             if args.model.is_none() {
                 args.model = p.model;
             }
+            if args.reasoning_effort.is_none() {
+                args.reasoning_effort = p.reasoning_effort;
+            }
         }
     };
 
@@ -426,6 +429,9 @@ pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
     }
     if args.top_k.is_none() {
         args.top_k = cache_args.top_k;
+    }
+    if args.reasoning_effort.is_none() {
+        args.reasoning_effort = cache_args.reasoning_effort;
     }
 
     Ok(args)
@@ -538,6 +544,14 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
     }
     if args.temperature.is_none() {
         args.temperature = config.temperature;
+    }
+    // `reasoning_effort` describes the request, not the provider, so it sits
+    // with `temperature`/`top_p` rather than inside the provider-scoped block
+    // below. Only the `chatgpt` provider reads it; for everyone else it is an
+    // inert string, so inheriting it across providers costs nothing and
+    // surprises no one.
+    if args.reasoning_effort.is_none() {
+        args.reasoning_effort = config.reasoning_effort;
     }
     if args.conversation.is_empty()
         || args.conversation.first().unwrap().role != ConversationRole::System
@@ -782,6 +796,52 @@ mod tests {
             actual.api_base_url.as_deref(),
             Some("https://example.test/v1")
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn config_reasoning_effort_applies_across_providers(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // Unlike `base_url`/`key`/`model`, this one is *meant* to cross
+        // provider lines: it describes the request, and only one provider
+        // reads it. See the comment in `merge_args_and_config`.
+        let args = Args {
+            api: Some(Api::ChatGpt),
+            ..Default::default()
+        };
+
+        let config = Config {
+            api: Some(Api::OpenAi),
+            reasoning_effort: Some("high".to_string()),
+            ..Default::default()
+        };
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(actual.reasoning_effort.as_deref(), Some("high"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_reasoning_effort_beats_the_config(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let args = Args {
+            api: Some(Api::ChatGpt),
+            reasoning_effort: Some("xhigh".to_string()),
+            ..Default::default()
+        };
+
+        let config = Config {
+            api: Some(Api::ChatGpt),
+            reasoning_effort: Some("low".to_string()),
+            ..Default::default()
+        };
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(actual.reasoning_effort.as_deref(), Some("xhigh"));
 
         Ok(())
     }
