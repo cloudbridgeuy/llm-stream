@@ -1,6 +1,6 @@
 # llm-stream
 
-A Rust library and CLI for streaming interactions with LLM providers (OpenAI, Anthropic, Google, Mistral, Ollama, Groq, Jina, DeepSeek), plus a ChatGPT-subscription sign-in flow for authenticating as a ChatGPT account rather than an API key.
+A Rust library and CLI for streaming interactions with LLM providers (OpenAI, Anthropic, Google, Mistral, Ollama, Groq, Jina, DeepSeek, and a ChatGPT subscription account), including a ChatGPT sign-in flow for authenticating with a subscription instead of a metered API key.
 
 ## Language
 
@@ -11,6 +11,10 @@ _Avoid_: login, OAuth flow (when the subscription-specific meaning is intended)
 **Credentials**:
 The persisted `TokenSet` (access token, refresh token, ID token, account id) resulting from a ChatGPT sign-in, stored at `<config_dir>/auth.json`.
 _Avoid_: tokens, auth file (be specific: say "credentials" for the concept, "`auth.json`" for the file)
+
+**ChatGPT provider**:
+The `--api chatgpt` provider (aliases `chat-gpt`, `codex`) that streams model answers using ChatGPT sign-in credentials, over OpenAI's private Responses API, rather than a metered API key.
+_Avoid_: ChatGPT API (there is no public "ChatGPT API"; this is the undocumented Responses API used by Codex)
 
 ## Behavior
 
@@ -60,3 +64,18 @@ Running `llm-stream --logout` removes any stored ChatGPT credentials.
 #### Scenario: Already signed out
 - **WHEN** the operator runs `llm-stream --logout` and no credentials are stored
 - **THEN** the CLI still prints `signed out` and does not error
+
+### Requirement: ChatGPT provider streaming
+Running `llm-stream --api chatgpt` sends the prompt, and any conversation history, to a ChatGPT subscription account's model and streams the answer to stdout, using the credentials from ChatGPT sign-in.
+
+#### Scenario: Single-turn prompt
+- **WHEN** the operator runs `llm-stream --api chatgpt "<prompt>"` while signed in
+- **THEN** the CLI streams the model's answer to stdout
+
+#### Scenario: Continuing a conversation
+- **WHEN** the operator runs `llm-stream --api chatgpt --from-last "<prompt>"` after an earlier `--api chatgpt` turn in the same conversation
+- **THEN** the model's answer reflects information from that earlier turn
+
+#### Scenario: Not signed in
+- **WHEN** the operator runs `llm-stream --api chatgpt "<prompt>"` without stored ChatGPT credentials
+- **THEN** the CLI errors with `not signed in — run: llm-stream --login` and streams nothing
