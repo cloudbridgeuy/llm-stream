@@ -22,6 +22,24 @@ pub fn bind() -> Result<CallbackListener> {
     Ok(CallbackListener { listener })
 }
 
+/// The line an operator needs when the preferred port was taken.
+///
+/// `None` when the listener got port 1455. Otherwise a sentence naming the
+/// conflict, because the failure it predicts is otherwise unreadable: if
+/// `OpenAI` pins the redirect URI to 1455, the authorization server rejects the
+/// sign-in with a generic `invalid redirect_uri` and nothing on screen connects
+/// that to a port another process is holding.
+#[must_use]
+pub fn fallback_notice(port: u16) -> Option<String> {
+    (port != PREFERRED_PORT).then(|| {
+        format!(
+            "warning: port {PREFERRED_PORT} was busy, so sign-in is listening on port {port}. \
+             If the browser reports an invalid redirect URI, close whatever holds \
+             port {PREFERRED_PORT} (a running codex, or another llm-stream --login) and try again."
+        )
+    })
+}
+
 impl CallbackListener {
     pub fn port(&self) -> Result<u16> {
         Ok(self.listener.local_addr()?.port())
@@ -103,6 +121,23 @@ fn respond(socket: &mut TcpStream, status: u16, title: &str, message: &str) -> R
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn the_preferred_port_needs_no_notice() {
+        assert_eq!(fallback_notice(PREFERRED_PORT), None);
+    }
+
+    #[test]
+    fn a_fallback_port_names_both_ports_and_the_symptom() {
+        let Some(notice) = fallback_notice(54321) else {
+            panic!("a fallback port must produce a notice");
+        };
+        assert!(notice.contains("1455"), "got: {notice}");
+        assert!(notice.contains("54321"), "got: {notice}");
+        // Without this the operator sees an opaque browser error and has no
+        // reason to suspect a port conflict.
+        assert!(notice.contains("invalid redirect URI"), "got: {notice}");
+    }
 
     #[test]
     fn extracts_the_query_from_a_request_line() {

@@ -23,6 +23,9 @@ pub fn login(config_dir: &Path) -> Result<TokenSet> {
     let state = random_state();
 
     let listener = listener::bind()?;
+    if let Some(notice) = listener::fallback_notice(listener.port()?) {
+        eprintln!("{notice}");
+    }
     let redirect_uri = listener.redirect_uri()?;
 
     let url = oauth::authorize_url(&AuthorizeParams {
