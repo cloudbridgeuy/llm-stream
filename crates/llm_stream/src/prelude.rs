@@ -433,6 +433,22 @@ pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
     if args.reasoning_effort.is_none() {
         args.reasoning_effort = cache_args.reasoning_effort;
     }
+    // The cache file is rewritten wholesale from `args` once the response
+    // lands, so anything not restored here is destroyed on the first
+    // continuation. An explicit `--title`/`--description` still wins, which is
+    // how a conversation gets renamed.
+    if args.title.is_none() {
+        args.title = cache_args.title;
+    }
+    if args.description.is_none() {
+        args.description = cache_args.description;
+    }
+    // `--fork` overwrites this with `--from` after the response, so restoring
+    // it here only affects a plain continuation — where the fork's lineage
+    // would otherwise be lost.
+    if args.parent.is_none() {
+        args.parent = cache_args.parent;
+    }
 
     Ok(args)
 }
@@ -1087,6 +1103,96 @@ mod tests {
         assert_eq!(
             expected.conversation, actual.conversation,
             "There should be a single `system` message"
+        );
+
+        Ok(())
+    }
+
+    /// Writes `body` to `<tmp>/cache/<id>.toml` and hands back the directory,
+    /// which must stay alive for as long as the test reads from it.
+    fn cache_fixture(id: &str, body: &str) -> (tempfile::TempDir, Args) {
+        let dir = tempfile::tempdir().expect("could not create a temporary config directory");
+        let cache_dir = dir.path().join("cache");
+        std::fs::create_dir_all(&cache_dir).expect("could not create the cache directory");
+        std::fs::write(cache_dir.join(format!("{id}.toml")), body)
+            .expect("could not write the cache file");
+
+        let args = Args {
+            config_dir: Some(dir.path().to_string_lossy().into_owned()),
+            from: Some(id.to_string()),
+            ..Default::default()
+        };
+
+        (dir, args)
+    }
+
+    /// A cache file with everything a continuation is expected to carry over.
+    const CACHED_CONVERSATION: &str = r#"
+api = "openai"
+title = "Cached Title"
+description = "Cached description"
+parent = "aaaaaaaaaaaaaaaaaaaa"
+
+[[conversation]]
+role = "user"
+content = "hello"
+"#;
+
+    #[test]
+    fn test_cached_title_and_description_survive_a_continuation(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let (_dir, args) = cache_fixture("survives", CACHED_CONVERSATION);
+
+        let actual = merge_args_and_cache(args)?;
+
+        assert_eq!(
+            actual.title,
+            Some("Cached Title".to_string()),
+            "the cached title was dropped, so the rewritten cache file loses it"
+        );
+        assert_eq!(
+            actual.description,
+            Some("Cached description".to_string()),
+            "the cached description was dropped, so the rewritten cache file loses it"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_explicit_title_and_description_override_the_cache(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let (_dir, mut args) = cache_fixture("overrides", CACHED_CONVERSATION);
+        args.title = Some("Renamed".to_string());
+        args.description = Some("Rewritten".to_string());
+
+        let actual = merge_args_and_cache(args)?;
+
+        assert_eq!(
+            actual.title,
+            Some("Renamed".to_string()),
+            "an explicit --title must win, it is how a conversation is renamed"
+        );
+        assert_eq!(
+            actual.description,
+            Some("Rewritten".to_string()),
+            "an explicit --description must win over the cached one"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cached_parent_survives_a_continuation(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let (_dir, args) = cache_fixture("lineage", CACHED_CONVERSATION);
+
+        let actual = merge_args_and_cache(args)?;
+
+        assert_eq!(
+            actual.parent,
+            Some("aaaaaaaaaaaaaaaaaaaa".to_string()),
+            "continuing a fork must not orphan it from the conversation it forked off"
         );
 
         Ok(())

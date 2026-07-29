@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **llm-stream**: A conversation's `title`, `description`, and `parent` are no
+  longer destroyed the first time it is continued. `merge_args_and_cache` did not
+  restore them from the cache file, so the rewrite that follows the response
+  dropped the keys. An explicit `--title` or `--description` still wins, and
+  remains the way to rename a conversation.
+
 ## [0.5.1] - 2025-07-08
 
 ### Changed

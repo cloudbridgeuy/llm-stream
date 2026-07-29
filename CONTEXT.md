@@ -178,3 +178,19 @@ Running `llm-stream --version` identifies the binary and the version actually in
 #### Scenario: Reporting the installed version
 - **WHEN** the operator runs `llm-stream --version`
 - **THEN** the CLI prints `llm-stream <version>`, where `<version>` is the version of the installed `llm-stream` package
+
+### Requirement: Conversation metadata survives continuation
+A conversation's `title`, `description`, and `parent` belong to the conversation, not to the invocation that set them. Continuing a conversation rewrites its cache file wholesale, so every one of them is carried over from the cache unless the command line supplies its own.
+
+#### Scenario: Continuing a titled conversation
+- **WHEN** the operator runs `llm-stream --from <id> "<prompt>"` on a conversation that has a title or a description, without passing `--title` or `--description`
+- **THEN** the rewritten cache file still carries them
+- **AND** `llm-stream --list` still shows them
+
+#### Scenario: Renaming a conversation
+- **WHEN** the operator runs `llm-stream --from <id> --title "<new title>" "<prompt>"`
+- **THEN** the new title replaces the cached one
+
+#### Scenario: Continuing a fork
+- **WHEN** the operator runs `llm-stream --from <id> "<prompt>"` on a conversation that was created with `--fork`
+- **THEN** the rewritten cache file still names the conversation it forked off, so `llm-stream --list` keeps showing its lineage
