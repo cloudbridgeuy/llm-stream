@@ -8,7 +8,7 @@
 //! constant here came from live measurement, not from a specification.
 
 use eventsource_client::{Client as EsClient, ClientBuilder, ReconnectOptions, SSE};
-use futures::stream::{Stream, TryStreamExt};
+use futures::stream::{Stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -200,11 +200,36 @@ impl MessageBody {
     }
 }
 
+/// The error payload carried by a failure event.
+///
+/// Only `message` is modelled, because only `message` is shown to the operator.
+/// The rest of the object varies by failure kind and reading it would be
+/// guessing at an undocumented shape.
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub struct EventError {
+    pub message: String,
+}
+
+/// The `response` object on a `response.failed` event.
+///
+/// `error` is `Option` because the server does not always populate it — and a
+/// failure with no explanation is still a failure, so the absence must not be
+/// mistaken for success.
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub struct FailedResponse {
+    #[serde(default)]
+    pub error: Option<EventError>,
+}
+
 /// One event off the Responses SSE stream, as one closed set of cases.
 ///
 /// The `Unknown` arm is load-bearing. A live stream carries more than ten event
 /// types and OpenAI adds more without notice, so an unrecognised event must be
 /// inert rather than fatal.
+///
+/// `StreamError` and `ResponseFailed` are the two exceptions: they are the only
+/// events that mean the request failed, and they must never be inert. See
+/// [`failure_message`].
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum ResponseEvent {
@@ -214,6 +239,12 @@ pub enum ResponseEvent {
     ReasoningDelta { delta: String },
     #[serde(rename = "response.completed")]
     Completed,
+    /// A failure reported mid-stream, on an otherwise successful HTTP 200.
+    #[serde(rename = "error")]
+    StreamError { error: EventError },
+    /// The terminal form of the same thing: the response ended as `failed`.
+    #[serde(rename = "response.failed")]
+    ResponseFailed { response: FailedResponse },
     #[serde(other)]
     Unknown,
 }
@@ -228,13 +259,53 @@ pub fn classify(data: &str) -> ResponseEvent {
     serde_json::from_str(data).unwrap_or(ResponseEvent::Unknown)
 }
 
+/// What the operator is told when the server ends a response as `failed` but
+/// sends no explanation with it.
+///
+/// Silence would otherwise be indistinguishable from a successful empty answer,
+/// which is the one thing a failure must never look like.
+pub const UNSPECIFIED_FAILURE: &str = "the model stopped without producing an answer";
+
+/// The sentence to show the operator, when an event means the request failed.
+///
+/// `None` for every ordinary event. `Some` for the two the Codex backend uses to
+/// report a mid-stream failure — both of which arrive **inside a successful HTTP
+/// 200 stream**, so no layer above this one can tell that anything went wrong.
+///
+/// Measured live on 2026-07-29: an overloaded backend sends `error`, then
+/// `response.failed`, then closes the stream cleanly. Treating either as inert
+/// makes the CLI exit 0 having printed nothing.
+#[must_use]
+pub fn failure_message(event: &ResponseEvent) -> Option<String> {
+    match event {
+        ResponseEvent::StreamError { error } => Some(error.message.clone()),
+        ResponseEvent::ResponseFailed { response } => Some(
+            response
+                .error
+                .as_ref()
+                .map_or_else(|| UNSPECIFIED_FAILURE.to_string(), |e| e.message.clone()),
+        ),
+        _ => None,
+    }
+}
+
 /// Projects a Responses event onto the provider-neutral event the CLI handles.
 #[must_use]
 pub fn to_reason_event(event: ResponseEvent) -> ReasonEvent {
+    if let Some(message) = failure_message(&event) {
+        return ReasonEvent::Err(Error::ApiError(message));
+    }
+
     match event {
         ResponseEvent::OutputTextDelta { delta } => ReasonEvent::Delta(delta),
         ResponseEvent::ReasoningDelta { delta } => ReasonEvent::Reasoning(delta),
         ResponseEvent::Completed | ResponseEvent::Unknown => ReasonEvent::Empty,
+        // Unreachable: `failure_message` returned `Some` for these above. Listed
+        // rather than folded into a `_` arm so that a new variant is a compile
+        // error here instead of a silent `Empty`.
+        ResponseEvent::StreamError { .. } | ResponseEvent::ResponseFailed { .. } => {
+            ReasonEvent::Empty
+        }
     }
 }
 
@@ -375,16 +446,27 @@ impl Client {
 
         let stream = Box::pin(client.stream())
             .or_else(|error| async move { Err(map_stream_error(error).await) })
-            .map_ok(|event| match event {
-                SSE::Event(ev) => match classify(&ev.data) {
-                    ResponseEvent::OutputTextDelta { delta } => delta,
-                    _ => String::new(),
-                },
-                SSE::Connected(_) => String::new(),
-                SSE::Comment(comment) => {
-                    log::debug!("comment: {comment}");
-                    String::new()
-                }
+            .map(|result| {
+                result.and_then(|event| match event {
+                    SSE::Event(ev) => {
+                        let event = classify(&ev.data);
+                        // Before the text projection: a failure event carries no
+                        // delta, so flattening it to `String::new()` would end
+                        // the stream silently with a zero exit code.
+                        if let Some(message) = failure_message(&event) {
+                            return Err(Error::ApiError(message));
+                        }
+                        Ok(match event {
+                            ResponseEvent::OutputTextDelta { delta } => delta,
+                            _ => String::new(),
+                        })
+                    }
+                    SSE::Connected(_) => Ok(String::new()),
+                    SSE::Comment(comment) => {
+                        log::debug!("comment: {comment}");
+                        Ok(String::new())
+                    }
+                })
             });
 
         // Boxed so the result is `Unpin` — see the note on `or_else` above.
@@ -410,10 +492,21 @@ impl Client {
 
         let stream = Box::pin(client.stream())
             .or_else(|error| async move { Err(map_stream_error(error).await) })
-            .map_ok(|event| match event {
-                SSE::Event(ev) => to_reason_event(classify(&ev.data)),
-                SSE::Connected(_) => ReasonEvent::Connected,
-                SSE::Comment(comment) => ReasonEvent::Comment(comment),
+            .map(|result| {
+                result.and_then(|event| match event {
+                    SSE::Event(ev) => {
+                        let event = classify(&ev.data);
+                        // Raised to the `Result` rather than left as
+                        // `ReasonEvent::Err`: the CLI's reasoning handler has no
+                        // arm for that variant, so it would be dropped.
+                        if let Some(message) = failure_message(&event) {
+                            return Err(Error::ApiError(message));
+                        }
+                        Ok(to_reason_event(event))
+                    }
+                    SSE::Connected(_) => Ok(ReasonEvent::Connected),
+                    SSE::Comment(comment) => Ok(ReasonEvent::Comment(comment)),
+                })
             });
 
         // Boxed so the result is `Unpin` — `or_else` with an async block is not,
@@ -428,6 +521,66 @@ mod tests {
 
     fn json_of<T: Serialize>(value: &T) -> serde_json::Value {
         serde_json::to_value(value).unwrap_or_else(|e| panic!("serialization failed: {e}"))
+    }
+
+    /// The sentence an overloaded Codex backend sends.
+    const OVERLOADED: &str = "Our servers are currently overloaded. Please try again later.";
+
+    /// Captured live on 2026-07-29, verbatim. Both of these arrive on an HTTP
+    /// 200 stream, one after the other, and then the stream closes cleanly.
+    const ERROR_EVENT: &str = r#"{"type":"error","error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later.","param":null},"sequence_number":2}"#;
+
+    const FAILED_EVENT: &str = r#"{"type":"response.failed","response":{"id":"resp_09","object":"response","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."},"incomplete_details":null}}"#;
+
+    #[test]
+    fn an_error_event_is_a_failure_carrying_the_servers_sentence() {
+        assert_eq!(
+            failure_message(&classify(ERROR_EVENT)).as_deref(),
+            Some(OVERLOADED)
+        );
+    }
+
+    #[test]
+    fn a_failed_response_is_a_failure_carrying_the_servers_sentence() {
+        assert_eq!(
+            failure_message(&classify(FAILED_EVENT)).as_deref(),
+            Some(OVERLOADED)
+        );
+    }
+
+    #[test]
+    fn a_failed_response_without_an_error_object_still_reports_failure() {
+        // The absence of an explanation must not read as success.
+        let event = classify(r#"{"type":"response.failed","response":{"status":"failed"}}"#);
+        assert_eq!(
+            failure_message(&event).as_deref(),
+            Some(UNSPECIFIED_FAILURE)
+        );
+    }
+
+    #[test]
+    fn ordinary_events_are_never_failures() {
+        // Including event types we do not model: `Unknown` must stay inert, or
+        // every unrecognised event would abort the stream.
+        for data in [
+            r#"{"type":"response.output_text.delta","delta":"PONG"}"#,
+            r#"{"type":"response.reasoning_summary_text.delta","delta":"thinking"}"#,
+            r#"{"type":"response.completed","response":{"status":"completed"}}"#,
+            r#"{"type":"response.created","response":{"status":"in_progress"}}"#,
+            r#"{"type":"response.output_item.added"}"#,
+            "not json at all",
+        ] {
+            assert_eq!(failure_message(&classify(data)), None, "data: {data}");
+        }
+    }
+
+    #[test]
+    fn a_failure_reaches_the_reasoning_stream_as_an_api_error() {
+        // `ApiError` is the variant the CLI prints verbatim, with no wrapper.
+        match to_reason_event(classify(ERROR_EVENT)) {
+            ReasonEvent::Err(Error::ApiError(message)) => assert_eq!(message, OVERLOADED),
+            other => panic!("expected an ApiError, got: {other}"),
+        }
     }
 
     #[test]

@@ -85,6 +85,11 @@ Running `llm-stream --api chatgpt` sends the prompt, and any conversation histor
 - **WHEN** the operator runs `llm-stream --api chatgpt "<prompt>"` without stored ChatGPT credentials
 - **THEN** the CLI errors with `not signed in — run: llm-stream --login` and streams nothing
 
+#### Scenario: The server fails partway through the stream
+- **WHEN** the server accepts the request but then reports a failure mid-stream (for example, `server_is_overloaded`), which arrives inside an otherwise successful HTTP 200 response
+- **THEN** the CLI errors with the server's own sentence (for example, `Our servers are currently overloaded. Please try again later.`) and exits non-zero
+- **AND** it never reports success with an empty answer
+
 #### Scenario: Rejected model
 - **WHEN** the operator runs `llm-stream --api chatgpt --model <model> "<prompt>"` and the server refuses the request (for example, a model the account's plan cannot use)
 - **THEN** the CLI errors with the server's own message (for example, `The '<model>' model is not supported when using Codex with a ChatGPT account.`) and streams nothing
