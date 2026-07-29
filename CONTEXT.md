@@ -194,3 +194,19 @@ A conversation's `title`, `description`, and `parent` belong to the conversation
 #### Scenario: Continuing a fork
 - **WHEN** the operator runs `llm-stream --from <id> "<prompt>"` on a conversation that was created with `--fork`
 - **THEN** the rewritten cache file still names the conversation it forked off, so `llm-stream --list` keeps showing its lineage
+
+### Requirement: Cached answers do not depend on where stdout points
+What a conversation records is the same whether the operator watched the answer on a terminal or piped it somewhere. Redirecting stdout changes how the answer is rendered, never whether it is remembered.
+
+#### Scenario: Piping the answer
+- **WHEN** the operator runs `llm-stream "<prompt>" | cat`, or redirects stdout to a file
+- **THEN** the answer streams to stdout unrendered, without syntax highlighting
+- **AND** the conversation records the assistant's turn with the full answer
+
+#### Scenario: Continuing a piped conversation
+- **WHEN** the operator continues a conversation whose earlier turns were produced by piped runs
+- **THEN** the model receives those earlier answers as history
+
+#### Scenario: Piping a reasoning provider's answer
+- **WHEN** the operator runs `llm-stream --api deepseek "<prompt>" | cat`, or `--api chatgpt --reasoning-summary`
+- **THEN** the conversation records the answer, and not the reasoning summary, which stays on stderr

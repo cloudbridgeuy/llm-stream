@@ -9,6 +9,11 @@
   restore them from the cache file, so the rewrite that follows the response
   dropped the keys. An explicit `--title` or `--description` still wins, and
   remains the way to rename a conversation.
+- **llm-stream**: A piped run (`llm-stream "..." | cat`, or any redirect) no
+  longer caches an empty answer. Both stream handlers skipped the accumulator on
+  the non-terminal path, so the model's reply reached stdout but the conversation
+  recorded the assistant's turn as `content = ""` — and continuing it resumed
+  from a half-erased history.
 
 ## [0.5.1] - 2025-07-08
 

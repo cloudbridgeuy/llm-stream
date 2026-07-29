@@ -49,6 +49,11 @@ pub async fn handle_stream(
                     crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
                 }
 
+                // Before the `!is_terminal` early return below: the accumulator
+                // is what gets cached, so skipping it there cached an empty
+                // answer for every piped run.
+                accumulated_text.push_str(&text);
+
                 if !is_terminal {
                     // If not a terminal, print each instance of `text` directly to `stdout`
                     print!("{}", text);
@@ -56,7 +61,6 @@ pub async fn handle_stream(
                     continue;
                 }
 
-                accumulated_text.push_str(&text);
                 let length = previous_output.lines().count();
 
                 let output = crate::printer::highlight_markdown(&accumulated_text);
@@ -1197,6 +1201,75 @@ content = "hello"
 
         Ok(())
     }
+
+    /// Reads back the conversation a stream handler cached under `id`.
+    ///
+    /// `cargo test` captures stdout, so `atty` reports it is not a terminal and
+    /// these tests exercise the piped branch — the one that used to cache
+    /// nothing — without having to fake a tty.
+    fn cached_conversation(dir: &tempfile::TempDir, id: &str) -> Conversation {
+        let body = std::fs::read_to_string(dir.path().join("cache").join(format!("{id}.toml")))
+            .expect("the handler did not write a cache file");
+        toml::from_str::<Args>(&body)
+            .expect("the cache file is not readable as args")
+            .conversation
+    }
+
+    /// Args that cache into `dir` under `id`, with the spinner off so the test
+    /// output stays readable.
+    fn args_caching_into(dir: &tempfile::TempDir, id: &str) -> Args {
+        Args {
+            config_dir: Some(dir.path().to_string_lossy().into_owned()),
+            from: Some(id.to_string()),
+            quiet: Some(true),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn test_piped_answer_is_cached_in_full(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let (dir, _) = cache_fixture("piped", CACHED_CONVERSATION);
+        let stream = futures::stream::iter(vec![Ok("mock ".to_string()), Ok("reply".to_string())]);
+
+        handle_stream(Box::pin(stream), args_caching_into(&dir, "piped")).await?;
+
+        let conversation = cached_conversation(&dir, "piped");
+        let last = conversation.last().expect("the conversation is empty");
+        assert_eq!(last.role, ConversationRole::Assistant);
+        assert_eq!(
+            last.content, "mock reply",
+            "a piped run cached an empty answer, losing the conversation's other half"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_piped_reasoning_answer_is_cached_in_full(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let (dir, _) = cache_fixture("piped-reasoning", CACHED_CONVERSATION);
+        // Only the answer is cached; the reasoning summary is stderr-only.
+        let stream = futures::stream::iter(vec![
+            Ok(llm_stream::event::ReasonEvent::Reasoning(
+                "thinking".to_string(),
+            )),
+            Ok(llm_stream::event::ReasonEvent::Delta("mock ".to_string())),
+            Ok(llm_stream::event::ReasonEvent::Delta("reply".to_string())),
+        ]);
+
+        handle_reason_stream(Box::pin(stream), args_caching_into(&dir, "piped-reasoning")).await?;
+
+        let conversation = cached_conversation(&dir, "piped-reasoning");
+        let last = conversation.last().expect("the conversation is empty");
+        assert_eq!(last.role, ConversationRole::Assistant);
+        assert_eq!(
+            last.content, "mock reply",
+            "a piped reasoning run cached an empty answer"
+        );
+
+        Ok(())
+    }
 }
 
 #[derive(Table)]
@@ -1518,6 +1591,11 @@ pub async fn handle_reason_stream(
                         std::io::stderr().flush()?;
                     }
 
+                    // Before the `!is_terminal` early return below: the
+                    // accumulator is what gets cached, so skipping it there
+                    // cached an empty answer for every piped run.
+                    accumulated_text.push_str(&text);
+
                     if !is_terminal {
                         // If not a terminal, print each instance of `text` directly to `stdout`
                         print!("{}", text);
@@ -1525,7 +1603,6 @@ pub async fn handle_reason_stream(
                         continue;
                     }
 
-                    accumulated_text.push_str(&text);
                     let length = previous_output.lines().count();
 
                     let output = crate::printer::highlight_markdown(&accumulated_text);
