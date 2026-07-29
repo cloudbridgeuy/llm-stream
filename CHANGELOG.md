@@ -8,7 +8,11 @@
   longer destroyed the first time it is continued. `merge_args_and_cache` did not
   restore them from the cache file, so the rewrite that follows the response
   dropped the keys. An explicit `--title` or `--description` still wins, and
-  remains the way to rename a conversation.
+  remains the way to rename a conversation during a provider run.
+- **llm-stream**: Added offline `--set-title` and `--set-description` commands.
+  They require `--from` or `--from-last`, update both fields together when
+  requested, and edit only the selected metadata keys so hand-written cache
+  comments and unknown keys are not discarded.
 - **llm-stream**: A piped run (`llm-stream "..." | cat`, or any redirect) no
   longer caches an empty answer. Both stream handlers skipped the accumulator on
   the non-terminal path, so the model's reply reached stdout but the conversation

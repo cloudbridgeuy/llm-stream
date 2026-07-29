@@ -4,6 +4,7 @@
 //! below fails (or answers) before a socket is opened — so these run on any
 //! machine, in CI, for free. Contrast `live_chatgpt.rs`, which is opt-in.
 
+use std::fs;
 use std::process::{Command, Stdio};
 
 /// The one sentence a signed-out operator should ever see. Duplicated from
@@ -35,6 +36,154 @@ fn run_without_credentials(args: &[&str]) -> (bool, String, String) {
         String::from_utf8_lossy(&output.stdout).into_owned(),
         String::from_utf8_lossy(&output.stderr).into_owned(),
     )
+}
+
+/// Runs an offline metadata command against a throwaway cache fixture and
+/// returns the process output plus the resulting cache text.
+fn run_metadata_command(id: &str, body: &str, args: &[&str]) -> (bool, String, String, String) {
+    let dir = tempfile::tempdir().expect("could not create a temporary config directory");
+    let cache_dir = dir.path().join("cache");
+    fs::create_dir_all(&cache_dir).expect("could not create the cache directory");
+    fs::write(cache_dir.join(format!("{id}.toml")), body).expect("could not write cache fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_llm-stream"))
+        .arg("--config-dir")
+        .arg(dir.path())
+        .args(args)
+        .stdin(Stdio::null())
+        .output()
+        .expect("could not run the llm-stream binary");
+    let updated = fs::read_to_string(cache_dir.join(format!("{id}.toml")))
+        .expect("could not read cache fixture");
+
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+        updated,
+    )
+}
+
+const CACHE_FIXTURE: &str = r#"# keep this comment
+api = "openai"
+custom_key = "keep me"
+
+[[conversation]]
+role = "user"
+content = "hello"
+"#;
+
+#[test]
+fn set_title_adds_missing_metadata_without_network() {
+    let (ok, stdout, stderr, updated) = run_metadata_command(
+        "missing-title",
+        CACHE_FIXTURE,
+        &[
+            "--from",
+            "missing-title",
+            "--set-title",
+            "Picked conversation",
+            "--api",
+            "open-ai",
+            "--api-base-url",
+            "http://127.0.0.1:1",
+        ],
+    );
+
+    assert!(ok, "expected success\nstdout: {stdout}\nstderr: {stderr}");
+    assert!(
+        stdout.is_empty(),
+        "metadata commands keep stdout quiet: {stdout}"
+    );
+    assert!(
+        stderr.contains("updated conversation metadata"),
+        "stderr: {stderr}"
+    );
+    assert!(updated.contains("title = \"Picked conversation\""));
+    assert!(updated.contains("custom_key = \"keep me\""));
+    assert!(updated.contains("content = \"hello\""));
+}
+
+#[test]
+fn set_title_replaces_existing_metadata_without_network() {
+    let body = CACHE_FIXTURE.replace(
+        "custom_key = \"keep me\"",
+        "title = \"Old title\"\ncustom_key = \"keep me\"",
+    );
+    let (ok, stdout, stderr, updated) = run_metadata_command(
+        "replace-title",
+        &body,
+        &["--from", "replace-title", "--set-title", "New title"],
+    );
+
+    assert!(ok, "expected success\nstdout: {stdout}\nstderr: {stderr}");
+    assert!(stdout.is_empty());
+    assert!(updated.contains("title = \"New title\""));
+    assert!(!updated.contains("title = \"Old title\""));
+}
+
+#[test]
+fn set_title_and_description_updates_both_without_network() {
+    let (ok, stdout, stderr, updated) = run_metadata_command(
+        "both",
+        CACHE_FIXTURE,
+        &[
+            "--from",
+            "both",
+            "--set-title",
+            "A title",
+            "--set-description",
+            "A description",
+        ],
+    );
+
+    assert!(ok, "expected success\nstdout: {stdout}\nstderr: {stderr}");
+    assert!(stdout.is_empty());
+    assert!(updated.contains("title = \"A title\""));
+    assert!(updated.contains("description = \"A description\""));
+}
+
+#[test]
+fn set_metadata_can_select_the_latest_conversation_without_network() {
+    let (ok, stdout, stderr, updated) = run_metadata_command(
+        "latest",
+        CACHE_FIXTURE,
+        &["--from-last", "--set-title", "Latest conversation"],
+    );
+
+    assert!(ok, "expected success\nstdout: {stdout}\nstderr: {stderr}");
+    assert!(stdout.is_empty());
+    assert!(updated.contains("title = \"Latest conversation\""));
+}
+
+#[test]
+fn set_metadata_requires_a_conversation_name() {
+    let (ok, stdout, stderr) = run_without_credentials(&["--set-title", "Needs a name"]);
+
+    assert!(!ok);
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("--from or --from-last"), "stderr: {stderr}");
+}
+
+#[test]
+fn set_metadata_rejects_a_nonexistent_conversation() {
+    let (ok, stdout, stderr, _) = run_metadata_command(
+        "other",
+        CACHE_FIXTURE,
+        &[
+            "--from",
+            "missing",
+            "--set-description",
+            "No such conversation",
+        ],
+    );
+
+    assert!(!ok);
+    assert!(stdout.is_empty());
+    assert!(
+        stderr.contains("conversation `missing` does not exist"),
+        "stderr: {stderr}"
+    );
 }
 
 #[test]

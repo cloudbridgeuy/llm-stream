@@ -388,10 +388,12 @@ pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
     );
 
     if args.from_last {
-        args.from = get_latest_toml_file(&cache_dir)?
+        args.from = get_latest_toml_file(&cache_dir)?;
     }
 
-    let id = args.from.clone().expect("No cache file found");
+    let Some(id) = args.from.clone() else {
+        return Ok(args);
+    };
 
     let cache_file = format!("{}/{}.toml", cache_dir, id);
 
@@ -455,6 +457,117 @@ pub fn merge_args_and_cache(mut args: Args) -> Result<Args> {
     }
 
     Ok(args)
+}
+
+/// Applies only the requested metadata changes to a cached conversation.
+///
+/// This is deliberately a text transformation instead of an `Args` round trip:
+/// cache files are hand-editable, so unknown keys, comments, and formatting
+/// outside the changed values must survive a rename.
+pub fn edit_conversation_metadata(
+    text: &str,
+    title: Option<&str>,
+    description: Option<&str>,
+) -> Result<String> {
+    let replacements = [("title", title), ("description", description)];
+    let mut lines = text.lines().map(str::to_string).collect::<Vec<_>>();
+    let had_trailing_newline = text.ends_with('\n');
+    let first_table = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with('['));
+    let mut insert_at = first_table.unwrap_or(lines.len());
+    while insert_at > 0 && lines[insert_at - 1].trim().is_empty() {
+        insert_at -= 1;
+    }
+
+    for (key, value) in replacements {
+        let Some(value) = value else {
+            continue;
+        };
+
+        let encoded = toml::Value::String(value.to_string()).to_string();
+        let mut found = false;
+        for line in &mut lines[..insert_at] {
+            let trimmed = line.trim_start();
+            let Some(rest) = trimmed.strip_prefix(key) else {
+                continue;
+            };
+            if !rest.trim_start().starts_with('=') {
+                continue;
+            }
+
+            let indent_len = line.len() - trimmed.len();
+            let equals = line.find('=').expect("validated metadata assignment");
+            let value_start = equals + 1;
+            let comment_start = find_toml_comment(line, value_start);
+            let prefix = line[..indent_len].to_string();
+            let suffix = line[comment_start..].to_string();
+            let value_and_whitespace = &line[value_start..comment_start];
+            let whitespace =
+                value_and_whitespace[value_and_whitespace.trim_end().len()..].to_string();
+            *line = format!("{}{} = {}{}{}", prefix, key, encoded, whitespace, suffix);
+            found = true;
+            break;
+        }
+
+        if !found {
+            lines.insert(insert_at, format!("{key} = {encoded}"));
+            insert_at += 1;
+        }
+    }
+
+    let mut edited = lines.join("\n");
+    if had_trailing_newline {
+        edited.push('\n');
+    }
+    Ok(edited)
+}
+
+/// Finds an unquoted TOML comment marker in one assignment line.
+fn find_toml_comment(line: &str, value_start: usize) -> usize {
+    let mut in_basic = false;
+    let mut escaped = false;
+    for (offset, character) in line[value_start..].char_indices() {
+        match character {
+            '"' if !escaped => in_basic = !in_basic,
+            '#' if !in_basic => return value_start + offset,
+            _ => {}
+        }
+        escaped = character == '\\' && !escaped;
+        if character != '\\' {
+            escaped = false;
+        }
+    }
+    line.len()
+}
+
+/// Updates a selected cache file and returns before config/provider setup.
+pub fn set_conversation_metadata(args: Args) -> Result<()> {
+    let Some(id) = args.from else {
+        return Err(Error::InvalidValue(
+            "--set-title/--set-description needs --from or --from-last to name a conversation"
+                .to_string(),
+        ));
+    };
+    let config_dir = args
+        .config_dir
+        .ok_or_else(|| Error::InvalidValue("could not find the cache directory".to_string()))?;
+    let cache_file = format!("{config_dir}/cache/{id}.toml");
+    if !std::path::Path::new(&cache_file).exists() {
+        return Err(Error::InvalidValue(format!(
+            "conversation `{id}` does not exist"
+        )));
+    }
+
+    let original = std::fs::read_to_string(&cache_file)?;
+    let edited = edit_conversation_metadata(
+        &original,
+        args.set_title.as_deref(),
+        args.set_description.as_deref(),
+    )?;
+    std::fs::write(&cache_file, edited)?;
+    eprintln!("updated conversation metadata: {id}");
+    Ok(())
 }
 
 /// Builds the arguments struct based on a combination of the following inputs,
@@ -1269,6 +1382,38 @@ content = "hello"
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn metadata_edit_preserves_unknown_keys_comments_and_conversation() {
+        let original = r#"# hand-written cache
+title = "old" # keep this comment
+custom_key = "keep me"
+
+[[conversation]]
+role = "user"
+content = "hello"
+"#;
+
+        let edited = edit_conversation_metadata(original, Some("new title"), None)
+            .expect("metadata edit should succeed");
+
+        assert!(edited.contains("# hand-written cache"));
+        assert!(edited.contains("title = \"new title\" # keep this comment"));
+        assert!(edited.contains("custom_key = \"keep me\""));
+        assert!(edited.contains("content = \"hello\""));
+    }
+
+    #[test]
+    fn metadata_edit_inserts_missing_fields_before_conversation() {
+        let original = "custom_key = \"keep me\"\n\n[[conversation]]\ncontent = \"hello\"\n";
+        let edited = edit_conversation_metadata(original, Some("title"), Some("description"))
+            .expect("metadata edit should succeed");
+
+        assert_eq!(
+            edited,
+            "custom_key = \"keep me\"\ntitle = \"title\"\ndescription = \"description\"\n\n[[conversation]]\ncontent = \"hello\"\n"
+        );
     }
 }
 

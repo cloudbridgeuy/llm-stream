@@ -191,6 +191,15 @@ A conversation's `title`, `description`, and `parent` belong to the conversation
 - **WHEN** the operator runs `llm-stream --from <id> --title "<new title>" "<prompt>"`
 - **THEN** the new title replaces the cached one
 
+#### Scenario: Renaming metadata without a provider request
+- **WHEN** the operator runs `llm-stream --from <id> --set-title "<new title>"`
+  or `--set-description "<new description>"`
+- **THEN** the selected cache file is updated and the CLI exits without
+  contacting a provider
+- **AND** `--set-title` and `--set-description` may be used together
+- **AND** comments, unknown keys, and conversation blocks in the cache file are
+  preserved
+
 #### Scenario: Continuing a fork
 - **WHEN** the operator runs `llm-stream --from <id> "<prompt>"` on a conversation that was created with `--fork`
 - **THEN** the rewritten cache file still names the conversation it forked off, so `llm-stream --list` keeps showing its lineage

@@ -276,6 +276,16 @@ pub struct Args {
     #[clap(long)]
     pub title: Option<String>,
 
+    /// Set the stored conversation title without contacting a provider.
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub set_title: Option<String>,
+
+    /// Set the stored conversation description without contacting a provider.
+    #[clap(long)]
+    #[serde(skip_serializing, default)]
+    pub set_description: Option<String>,
+
     /// Print the conversation defined in --from or --from-last to stdout
     #[clap(long)]
     #[serde(skip_serializing, default)]

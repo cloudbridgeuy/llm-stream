@@ -88,6 +88,20 @@ For more CLI options and usage information, run:
 llm-stream --help
 ```
 
+Stored conversation metadata can be changed locally, without contacting a
+provider. Name the conversation with `--from <id>` or `--from-last`; both
+metadata flags may be used together:
+
+```bash
+llm-stream --from <id> --set-title "A better title"
+llm-stream --from <id> --set-description "What this conversation is about"
+llm-stream --from <id> --set-title "Title" --set-description "Description"
+```
+
+These commands update only the requested top-level keys in the cache TOML, so
+hand-written comments and unknown keys are preserved. Confirmation is printed
+to stderr, and stdout remains quiet for scripting.
+
 ### ChatGPT subscription
 
 `llm-stream` can reach GPT models through a ChatGPT subscription instead of a metered

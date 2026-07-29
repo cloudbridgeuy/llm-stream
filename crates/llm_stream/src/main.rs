@@ -164,6 +164,10 @@ async fn try_main() -> Result<()> {
         return show(args);
     }
 
+    if args.set_title.is_some() || args.set_description.is_some() {
+        return set_conversation_metadata(args);
+    }
+
     let mut args = merge_args_and_config(args, config)?;
 
     log::info!("merged args and config: {:#?}", args);
