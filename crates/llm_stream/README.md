@@ -46,7 +46,27 @@ echo -n "What is the capital of" | llm-stream - "France?"
 
 ### Configuration ⚙️
 
-`llm-stream` uses a TOML configuration file to manage settings, API keys, and other customizations. The default configuration file is located at `~/.config/llm-stream.toml`.
+`llm-stream` uses a TOML configuration file to manage settings, API keys, and other customizations. The default configuration file is located at `~/.config/llm-stream/config.toml`. Run `llm-stream --config` to print the path in use, or `llm-stream --dir` for the directory.
+
+### ChatGPT subscription 🔐
+
+Reach GPT models through a ChatGPT subscription instead of an `OPENAI_API_KEY`:
+
+```bash
+llm-stream --login                                    # browser sign-in, once
+llm-stream --api chatgpt "say PONG"                   # stream an answer
+llm-stream --models                                   # which models this account may use
+llm-stream --api chatgpt --reasoning-effort high "explain this diff"
+```
+
+Credentials are stored at `~/.config/llm-stream/auth.json` with mode `0600`.
+`--login-status` shows who is signed in; `--logout` removes the credentials.
+
+This provider rides an **undocumented endpoint internal to OpenAI's Codex CLI**, which
+OpenAI may change or block without notice, and it spends your subscription's Codex
+allowance rather than a metered API key. See the
+[project README](https://github.com/cloudbridgeuy/llm-stream#chatgpt-subscription) for the
+full details, the verified model list, and the caveats.
 
 ### Presets
 

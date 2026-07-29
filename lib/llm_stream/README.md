@@ -7,11 +7,18 @@ This library provides a streamlined approach to interacting with Large Language 
 
 ## Supported Providers
 
-- **OpenAI:** Access the powerful GPT models through OpenAI's API.
+- **OpenAI:** Access the GPT models through OpenAI's API.
 - **Anthropic:** Utilize Anthropic's Claude models for various language tasks.
 - **Google:** Integrate Google's Gemini family of models.
-- **Mistral:** Leverage Mistral's language models for advanced capabilities.
-- **GitHub Copilot:** Access code-generation capabilities powered by GitHub Copilot.
+- **Mistral:** Leverage Mistral's language models, including a fill-in-the-middle endpoint.
+- **DeepSeek:** Stream both the answer and the model's reasoning.
+- **Groq:** Low-latency inference over open models.
+- **Ollama:** Talk to models running locally.
+- **Jina:** Embeddings and reranking.
+- **ChatGPT (subscription):** Reach GPT models with a ChatGPT subscription's OAuth
+  credentials instead of a metered API key, over OpenAI's private Responses endpoint.
+  Undocumented and subject to change without notice — see the
+  [project README](https://github.com/cloudbridgeuy/llm-stream#chatgpt-subscription).
 
 ## Key Features
 
@@ -26,7 +33,7 @@ Add the following dependency to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-llm-stream = "0.1.3"
+llm-stream = "0.5.0"
 ```
 
 ## Usage
