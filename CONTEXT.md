@@ -32,6 +32,11 @@ Running `llm-stream --login` authenticates the operator against a ChatGPT subscr
 - **WHEN** the loopback callback's `state` parameter is missing or does not match the value generated at the start of `--login`
 - **THEN** the sign-in fails and no credentials are stored
 
+#### Scenario: The preferred loopback port is occupied
+- **WHEN** the operator runs `llm-stream --login` while another process holds port 1455
+- **THEN** the CLI prints a warning to stderr naming port 1455, the port it fell back to, and what to close
+- **AND** the sign-in continues on the fallback port
+
 ### Requirement: Credential storage permissions
 Stored ChatGPT credentials are only ever readable and writable by the file's owner.
 
@@ -161,3 +166,10 @@ The config file's top-level `base_url`, `env`, `key`, `version`, and `model` def
 #### Scenario: Config file matches the selected provider
 - **WHEN** the operator runs `llm-stream --api <provider> "<prompt>"` and the config file's top-level `api` matches `<provider>`, or omits `--api` entirely
 - **THEN** `base_url`, `env`, `key`, `version`, and `model` are inherited from the config file as before
+
+### Requirement: Version reporting
+Running `llm-stream --version` identifies the binary and the version actually installed.
+
+#### Scenario: Reporting the installed version
+- **WHEN** the operator runs `llm-stream --version`
+- **THEN** the CLI prints `llm-stream <version>`, where `<version>` is the version of the installed `llm-stream` package
