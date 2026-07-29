@@ -157,7 +157,10 @@ async fn try_main() -> Result<()> {
         return list(args);
     }
 
-    if args.show {
+    // `--last` is a narrowing of `--show`, not a modifier that only counts when
+    // `--show` is also present. On its own it used to fall through to the
+    // prompt path and print nothing at all, which read as a no-op.
+    if args.show || args.last {
         return show(args);
     }
 

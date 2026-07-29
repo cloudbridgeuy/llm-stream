@@ -210,3 +210,24 @@ What a conversation records is the same whether the operator watched the answer 
 #### Scenario: Piping a reasoning provider's answer
 - **WHEN** the operator runs `llm-stream --api deepseek "<prompt>" | cat`, or `--api chatgpt --reasoning-summary`
 - **THEN** the conversation records the answer, and not the reasoning summary, which stays on stderr
+
+### Requirement: Printing a stored conversation
+`--show` prints a stored conversation without calling the model. `--last` narrows that to the final message alone, and is a narrowing of `--show` rather than a modifier on it: it prints on its own. Either way the conversation is named by `--from` or `--from-last`, and a run that cannot name one says so instead of printing nothing.
+
+#### Scenario: Printing a whole conversation
+- **WHEN** the operator runs `llm-stream --show --from <id>`
+- **THEN** the CLI prints the conversation's stored form to stdout, syntax-highlighted, and calls no model
+- **AND** with `--no-color` it prints the same text unhighlighted
+
+#### Scenario: Printing only the last message
+- **WHEN** the operator runs `llm-stream --last --from <id>`, with or without `--show`
+- **THEN** the CLI prints only the content of the conversation's final message, and nothing else
+
+#### Scenario: Naming no conversation
+- **WHEN** the operator runs `llm-stream --last` with neither `--from` nor `--from-last`
+- **THEN** the CLI errors with `--last needs --from or --from-last to name a conversation` and exits non-zero
+- **AND** nothing reaches stdout
+
+#### Scenario: A conversation with no messages
+- **WHEN** the operator runs `llm-stream --last --from <id>` on a conversation whose stored form holds no messages
+- **THEN** the CLI errors with a sentence naming `<id>` and exits non-zero

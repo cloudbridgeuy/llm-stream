@@ -14,6 +14,14 @@
   the non-terminal path, so the model's reply reached stdout but the conversation
   recorded the assistant's turn as `content = ""` — and continuing it resumed
   from a half-erased history.
+- **llm-stream**: `--last` now prints the last message on its own, as its help
+  text always promised. It was only read inside the `--show` handler, so
+  `--last` without `--show` fell through to the prompt path and exited zero
+  having printed nothing. `--show --last` is unchanged.
+- **llm-stream**: `--last` against a conversation with no messages now fails
+  with a sentence naming the conversation instead of panicking on an `unwrap`.
+  Passing `--last` with neither `--from` nor `--from-last` says which flag is
+  missing.
 
 ## [0.5.1] - 2025-07-08
 

@@ -1463,9 +1463,22 @@ pub fn list(args: Args) -> Result<()> {
 }
 
 /// Prints the given conversation to stdout
+///
+/// `--last` narrows the output to the final message. It reads
+/// `args.conversation`, which `merge_args_and_cache` only fills when `--from`
+/// or `--from-last` named a conversation, so an empty one means one of two
+/// things — nothing was named, or what was named holds no messages. Both used
+/// to reach a bare `unwrap`; both now say which happened.
 pub fn show(args: Args) -> Result<()> {
     if args.last {
-        println!("{}", args.conversation.last().unwrap().content);
+        let Some(message) = args.conversation.last() else {
+            return Err(Error::InvalidValue(match &args.from {
+                Some(id) => format!("the conversation `{id}` has no messages to print"),
+                None => "--last needs --from or --from-last to name a conversation".to_string(),
+            }));
+        };
+
+        println!("{}", message.content);
         return Ok(());
     }
 
@@ -1756,5 +1769,70 @@ mod separator_tests {
         // Owed, never printed: there is no answer to separate the summary from,
         // so the stream ends with no rule. That is correct.
         assert_eq!(on_reasoning(Separator::default()), Separator::Owed);
+    }
+}
+
+#[cfg(test)]
+mod show_tests {
+    use super::{show, Args, ConversationMessage, ConversationRole};
+
+    #[test]
+    fn last_on_an_empty_conversation_errors_instead_of_panicking() {
+        let args = Args {
+            last: true,
+            from: Some("01J0".to_string()),
+            conversation: vec![],
+            ..Default::default()
+        };
+
+        let message = match show(args) {
+            Ok(()) => panic!("an empty conversation printed a last message"),
+            Err(e) => crate::error::user_message(&e),
+        };
+
+        assert!(message.contains("01J0"), "got {message}");
+        assert!(message.contains("no messages"), "got {message}");
+    }
+
+    #[test]
+    fn last_without_a_named_conversation_says_which_flag_is_missing() {
+        let args = Args {
+            last: true,
+            from: None,
+            conversation: vec![],
+            ..Default::default()
+        };
+
+        let message = match show(args) {
+            Ok(()) => panic!("--last printed something with no conversation named"),
+            Err(e) => crate::error::user_message(&e),
+        };
+
+        assert!(message.contains("--from"), "got {message}");
+        assert!(message.contains("--from-last"), "got {message}");
+    }
+
+    #[test]
+    fn last_prints_the_final_message_of_the_conversation() {
+        let args = Args {
+            last: true,
+            from: Some("01J0".to_string()),
+            conversation: vec![
+                ConversationMessage {
+                    role: ConversationRole::User,
+                    content: "question".to_string(),
+                },
+                ConversationMessage {
+                    role: ConversationRole::Assistant,
+                    content: "answer".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+
+        // The content itself goes to stdout, which a unit test cannot capture;
+        // what is asserted here is that a populated conversation takes the
+        // print path rather than either error above.
+        assert!(show(args).is_ok());
     }
 }

@@ -68,6 +68,21 @@ fn models_without_credentials_names_the_login_command() {
 }
 
 #[test]
+fn last_on_its_own_is_not_a_silent_no_op() {
+    // `--last` used to only be read inside `show`, which nothing reached
+    // unless `--show` was also passed: the flag its help text says prints the
+    // last message printed nothing and exited zero. It must now either print
+    // or explain itself.
+    let (ok, stdout, stderr) = run_without_credentials(&["--last"]);
+    assert!(
+        !ok,
+        "with no conversation named this must fail\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(stderr.contains("--from"), "stderr: {stderr}");
+    assert!(stdout.is_empty(), "nothing should reach stdout: {stdout}");
+}
+
+#[test]
 fn version_reports_the_binary_name_and_the_package_version() {
     let output = match Command::new(env!("CARGO_BIN_EXE_llm-stream"))
         .arg("--version")

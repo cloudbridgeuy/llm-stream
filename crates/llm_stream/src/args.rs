@@ -281,7 +281,8 @@ pub struct Args {
     #[serde(skip_serializing, default)]
     pub show: bool,
 
-    /// Print the last message of the conversation defined in --from or --from-last to stdout
+    /// Print only the last message of the conversation defined in --from or --from-last to stdout.
+    /// Implies --show.
     #[clap(long)]
     #[serde(skip_serializing, default)]
     pub last: bool,
