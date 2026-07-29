@@ -675,7 +675,10 @@ mod tests {
     fn the_row_carries_the_slug_verbatim() {
         // The point of the table is that the operator can copy a slug straight
         // into `--model`.
-        assert_eq!(model_line("gpt-5.6-terra", &Probe::Accepted).model, "gpt-5.6-terra");
+        assert_eq!(
+            model_line("gpt-5.6-terra", &Probe::Accepted).model,
+            "gpt-5.6-terra"
+        );
     }
 
     #[test]
