@@ -66,3 +66,23 @@ fn models_without_credentials_names_the_login_command() {
     );
     assert!(stdout.is_empty(), "nothing should reach stdout: {stdout}");
 }
+
+#[test]
+fn version_reports_the_binary_name_and_the_package_version() {
+    let output = match Command::new(env!("CARGO_BIN_EXE_llm-stream"))
+        .arg("--version")
+        .stdin(Stdio::null())
+        .output()
+    {
+        Ok(output) => output,
+        Err(e) => panic!("could not run the llm-stream binary: {e}"),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected = format!("llm-stream {}", env!("CARGO_PKG_VERSION"));
+
+    // `CARGO_PKG_VERSION` here is the test's own package — the same one the
+    // binary is built from — so this stays true across version bumps without
+    // anyone remembering to edit it.
+    assert_eq!(stdout.trim(), expected, "stdout: {stdout}");
+}

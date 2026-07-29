@@ -91,13 +91,18 @@ impl FromStr for Api {
 }
 
 #[derive(Default, Clone, Debug, Parser, PartialEq, Serialize, Deserialize)]
-#[command(name = "e", version = "0.1.0")]
+#[command(name = "llm-stream", version)]
 #[command(about = "Interact with LLMs through the terminal")]
 #[command(
     long_about = "This Rust-based CLI enables users to interact with various Large Language Models
-(LLMs) directly from the terminal. Through this tool, you can send prompts to different
-APIs, such as OpenAI, Anthropic, Google, Mistral, and Mistral FIM, and receive and handle
-responses from these models.
+(LLMs) directly from the terminal. Through this tool, you can send prompts to OpenAI,
+Anthropic, Google, Mistral, Mistral FIM, Ollama, Groq, DeepSeek, or a ChatGPT subscription
+account, and receive and handle responses from these models.
+
+The `chatgpt` provider works differently from the rest: it signs in to a ChatGPT
+subscription with `--login` instead of taking an API key, it is steered with
+`--reasoning-effort` and `--reasoning-summary` rather than `--temperature` and `--top-p`,
+and `--models` reports which models the signed-in account may use.
 
 The tool offers extensive configuration options, allowing you
 to specify parameters like model type, maximum and minimum tokens, temperature, top-p
