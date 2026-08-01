@@ -707,11 +707,16 @@ pub fn merge_args_and_config(mut args: Args, config: Config) -> Result<Args> {
         if args.api_version.is_none() {
             args.api_version = config.version;
         }
-        if args.api_env.is_none() {
-            args.api_env = config.env;
-        }
-        if args.api_key.is_none() {
-            args.api_key = config.key;
+        // `env` and `key` are narrower still: a provider that signs in with
+        // OAuth never reads either, and serde hands every config file an `env`
+        // whether or not it asked for one. See `reads_api_credentials`.
+        if crate::chatgpt::reads_api_credentials(args.api.or(config.api)) {
+            if args.api_env.is_none() {
+                args.api_env = config.env;
+            }
+            if args.api_key.is_none() {
+                args.api_key = config.key;
+            }
         }
         if args.api_base_url.is_none() {
             args.api_base_url = config.base_url;
@@ -842,6 +847,43 @@ mod tests {
         assert_eq!(actual.api_env, None, "env leaked across providers");
         assert_eq!(actual.api_key, None, "key leaked across providers");
         assert_eq!(actual.api_version, None, "version leaked across providers");
+
+        Ok(())
+    }
+
+    #[test]
+    fn a_chatgpt_config_keeps_its_url_but_not_its_credentials(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // The shape every real chatgpt config has: `api` and `base_url` are
+        // written by hand, `env` is invented by serde's `default_env`. The URL
+        // must survive the merge — `prepare` reads it — and the credential must
+        // not, or the CLI greets every invocation by warning about `--api-env`.
+        let args = Args {
+            api: Some(Api::ChatGpt),
+            ..Default::default()
+        };
+
+        let config = Config {
+            api: Some(Api::ChatGpt),
+            base_url: Some("https://chatgpt.com/backend-api/codex".to_string()),
+            env: Some("OPENAI_API_KEY".to_string()),
+            key: Some("secret".to_string()),
+            ..Default::default()
+        };
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            actual.api_base_url.as_deref(),
+            Some("https://chatgpt.com/backend-api/codex"),
+            "the endpoint this provider does read was dropped"
+        );
+        assert_eq!(actual.api_env, None, "env reached a provider that ignores it");
+        assert_eq!(actual.api_key, None, "key reached a provider that ignores it");
+        assert!(
+            crate::chatgpt::inert_flag_warnings(&actual).is_empty(),
+            "a plain invocation warned about flags the operator never typed"
+        );
 
         Ok(())
     }

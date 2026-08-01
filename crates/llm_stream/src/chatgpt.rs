@@ -26,6 +26,20 @@ pub const CREDENTIAL_WARNING: &str =
     "warning: the chatgpt provider uses subscription credentials; \
      --api-key and --api-env are ignored (see --login)";
 
+/// Whether a provider reads `env` and `key` at all.
+///
+/// This provider signs in through `--login` and never looks at an API key, so a
+/// config file's `env` and `key` describe some other provider even when its
+/// `api` names this one. `Config` proves the point: serde fills an absent `env`
+/// with `OPENAI_API_KEY` through `default_env`, so a chatgpt config that says
+/// nothing about credentials still arrives carrying one. Inheriting it names a
+/// variable this provider will never read, and makes [`inert_flag_warnings`]
+/// scold the operator for a flag they never typed.
+#[must_use]
+pub const fn reads_api_credentials(api: Option<Api>) -> bool {
+    !matches!(api, Some(Api::ChatGpt))
+}
+
 /// Lists the warnings the operator should see for flags that carry no meaning
 /// for this provider.
 ///
@@ -533,6 +547,32 @@ mod tests {
             inert_flag_warnings(&args),
             vec![SAMPLING_WARNING, CREDENTIAL_WARNING]
         );
+    }
+
+    #[test]
+    fn this_provider_never_reads_a_key_or_an_env() {
+        assert!(!reads_api_credentials(Some(Api::ChatGpt)));
+    }
+
+    #[test]
+    fn every_other_provider_still_reads_them() {
+        for api in [
+            Api::OpenAi,
+            Api::DeepSeek,
+            Api::Ollama,
+            Api::Anthropic,
+            Api::Google,
+            Api::Groq,
+            Api::Mistral,
+            Api::MistralFim,
+        ] {
+            assert!(reads_api_credentials(Some(api)), "{api} lost its credential");
+        }
+    }
+
+    #[test]
+    fn an_unnamed_provider_keeps_the_old_behaviour() {
+        assert!(reads_api_credentials(None));
     }
 
     #[test]

@@ -175,7 +175,7 @@ Running `llm-stream --models` asks the server which models the signed-in ChatGPT
 - **THEN** the request is still sent and the server decides, exactly as if the slug had been listed
 
 ### Requirement: Provider-scoped config defaults
-The config file's top-level `base_url`, `env`, `key`, `version`, and `model` defaults describe one specific provider and are only inherited when the config file's own `api` matches the provider selected via `--api`, or no `--api` flag was given.
+The config file's top-level `base_url`, `env`, `key`, `version`, and `model` defaults describe one specific provider and are only inherited when the config file's own `api` matches the provider selected via `--api`, or no `--api` flag was given. `env` and `key` are narrower still: a provider that signs in instead of reading an API key never inherits them, even from a config file that names it.
 
 #### Scenario: Config file describes a different provider
 - **WHEN** the operator runs `llm-stream --api <provider> "<prompt>"` and the config file's top-level `api` names a different provider
@@ -185,6 +185,11 @@ The config file's top-level `base_url`, `env`, `key`, `version`, and `model` def
 #### Scenario: Config file matches the selected provider
 - **WHEN** the operator runs `llm-stream --api <provider> "<prompt>"` and the config file's top-level `api` matches `<provider>`, or omits `--api` entirely
 - **THEN** `base_url`, `env`, `key`, `version`, and `model` are inherited from the config file as before
+
+#### Scenario: A ChatGPT config file carrying a credential
+- **WHEN** the operator runs `llm-stream --api chatgpt "<prompt>"` and the config file names `api = "chatgpt"` beside an `env` or a `key`
+- **THEN** `base_url`, `version`, and `model` are inherited as usual
+- **AND** `env` and `key` are not, so the run does not warn that `--api-env` or `--api-key` is ignored for a flag the operator never typed
 
 ### Requirement: Version reporting
 Running `llm-stream --version` identifies the binary and the version actually installed.
