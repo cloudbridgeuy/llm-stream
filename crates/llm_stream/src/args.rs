@@ -190,7 +190,9 @@ pub struct Args {
     #[clap(long, value_parser = ["low", "medium", "high", "xhigh"])]
     pub reasoning_effort: Option<String>,
 
-    /// Stream the model's reasoning summary to stderr before the answer.
+    /// Stream the model's reasoning summary before the answer. It goes to stdout
+    /// on a terminal and to stderr when stdout is piped, so a redirect still
+    /// holds the answer alone. It is never cached either way.
     #[clap(long, default_value = "false")]
     #[serde(skip_serializing, default)]
     pub reasoning_summary: bool,

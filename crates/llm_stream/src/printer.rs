@@ -15,12 +15,12 @@ use syntect::{
     util::LinesWithEndings,
 };
 
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
-static THEME: LazyLock<Theme> = LazyLock::new(|| {
+pub(crate) static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+pub(crate) static THEME: LazyLock<Theme> = LazyLock::new(|| {
     let theme_data = include_str!("../assets/themes/tokyonight/tokyonight-storm.tmTheme");
     ThemeSet::load_from_reader(&mut std::io::Cursor::new(theme_data)).unwrap()
 });
-static MARKDOWN_SYNTAX: LazyLock<&SyntaxReference> =
+pub(crate) static MARKDOWN_SYNTAX: LazyLock<&SyntaxReference> =
     LazyLock::new(|| SYNTAX_SET.find_syntax_by_name("Markdown").unwrap());
 static TERMINAL_WIDTH: LazyLock<usize> = LazyLock::new(|| {
     crossterm::terminal::size()

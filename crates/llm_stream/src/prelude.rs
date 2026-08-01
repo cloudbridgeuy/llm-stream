@@ -22,9 +22,12 @@ pub async fn handle_stream(
     mut args: Args,
 ) -> Result<()> {
     let mut accumulated_text = String::new();
-    let mut previous_output = String::new();
 
     let is_terminal = atty::is(atty::Stream::Stdout);
+
+    // Rendering is incremental and append-only. See stream_render for why
+    // re-rendering the whole answer each chunk could not be made to work.
+    let mut renderer = crate::stream_render::StreamRenderer::new(crate::stream_render::terminal_width());
 
     let mut sp = if args.quiet.is_none() || (args.quiet == Some(false) && is_terminal) {
         Some(spinners::Spinner::new(
@@ -41,12 +44,9 @@ pub async fn handle_stream(
         match result {
             Ok(Some(text)) => {
                 if is_terminal && sp.is_some() {
-                    // TODO: Find a better way to clean the spinner from the terminal.
                     sp.take().unwrap().stop();
                     std::io::stdout().flush()?;
-                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-                    print!("                      ");
-                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                    crate::stream_render::clear_row()?;
                 }
 
                 // Before the `!is_terminal` early return below: the accumulator
@@ -61,21 +61,7 @@ pub async fn handle_stream(
                     continue;
                 }
 
-                let length = previous_output.lines().count();
-
-                let output = crate::printer::highlight_markdown(&accumulated_text);
-
-                let unprinted_lines = output
-                    .lines()
-                    .skip(if length == 0 { 0 } else { length - 1 })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-                print!("{unprinted_lines}");
-                std::io::stdout().flush()?;
-
-                previous_output = output;
+                crate::stream_render::print_frame(&renderer.push(&text))?;
             }
             Ok(None) => break,
             Err(llm_stream::error::Error::EventsourceClient(
@@ -83,16 +69,19 @@ pub async fn handle_stream(
             )) => break,
             Err(e) => {
                 if is_terminal && sp.is_some() {
-                    // TODO: Find a better way to clean the spinner from the terminal.
                     sp.take().unwrap().stop();
                     std::io::stdout().flush()?;
-                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-                    print!("                      ");
-                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                    crate::stream_render::clear_row()?;
                 }
                 return Err(Error::from(e));
             }
         };
+    }
+
+    // Retires a last line that arrived without a newline, and leaves the cursor
+    // on a fresh row so the shell prompt does not land on the answer.
+    if is_terminal {
+        crate::stream_render::print_frame(&renderer.finish())?;
     }
 
     if !args.no_cache {
@@ -1703,6 +1692,51 @@ pub const fn on_answer(state: Separator) -> (Separator, bool) {
     }
 }
 
+/// Where a reasoning summary is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReasoningSink {
+    /// Beside the answer it precedes.
+    Stdout,
+    /// Out of the way of whatever is reading the answer.
+    Stderr,
+}
+
+/// The stream a reasoning summary belongs on.
+///
+/// Reasoning is never cached, so the only claim on stdout is the pipe:
+/// `llm-stream --last | pbcopy` and `llm-stream > answer.md` must hold the answer
+/// and nothing else. A terminal carries no such contract, and there the summary
+/// is part of the same reading as the answer that follows it, so splitting the
+/// two across streams only invites a redirect to lose half of what was on screen.
+#[must_use]
+pub const fn reasoning_sink(is_terminal: bool) -> ReasoningSink {
+    if is_terminal {
+        ReasoningSink::Stdout
+    } else {
+        ReasoningSink::Stderr
+    }
+}
+
+/// Writes reasoning text to the stream `reasoning_sink` chose.
+///
+/// Flushed either way. stdout is line buffered when it is a terminal, and a
+/// summary delta rarely ends in a newline, so an unflushed write would sit in
+/// the buffer until the answer pushed it out — the whole summary would appear at
+/// once, after the rule meant to separate it.
+fn write_reasoning(sink: ReasoningSink, text: &str) -> Result<()> {
+    match sink {
+        ReasoningSink::Stdout => {
+            print!("{text}");
+            std::io::stdout().flush()?;
+        }
+        ReasoningSink::Stderr => {
+            eprint!("{text}");
+            std::io::stderr().flush()?;
+        }
+    }
+    Ok(())
+}
+
 /// Handles a reasoning stream of text from the LLM and prints it to the terminal.
 pub async fn handle_reason_stream(
     mut stream: impl Stream<Item = std::result::Result<llm_stream::event::ReasonEvent, llm_stream::error::Error>>
@@ -1710,9 +1744,21 @@ pub async fn handle_reason_stream(
     mut args: Args,
 ) -> Result<()> {
     let mut accumulated_text = String::new();
-    let mut previous_output = String::new();
 
     let is_terminal = atty::is(atty::Stream::Stdout);
+    let sink = reasoning_sink(is_terminal);
+
+    // Rendering is incremental and append-only. See stream_render for why
+    // re-rendering the whole answer each chunk could not be made to work.
+    let width = crate::stream_render::terminal_width();
+    let mut renderer = crate::stream_render::StreamRenderer::new(width);
+    // A second renderer, because the two texts interleave in time but not on
+    // screen: the summary is finished and closed off before the first answer
+    // token is printed, and sharing one renderer would have the answer inherit
+    // whatever line the summary left open. A summary is markdown too — the
+    // server writes each part's heading as `**Bold**` — so it earns the same
+    // highlighting rather than a screenful of literal asterisks.
+    let mut reasoning_renderer = crate::stream_render::StreamRenderer::new(width);
 
     let mut sp = if args.quiet.is_none() || (args.quiet == Some(false) && is_terminal) {
         Some(spinners::Spinner::new(
@@ -1732,21 +1778,24 @@ pub async fn handle_reason_stream(
             Ok(Some(event)) => match event {
                 llm_stream::event::ReasonEvent::Delta(text) => {
                     if is_terminal && sp.is_some() {
-                        // TODO: Find a better way to clean the spinner from the terminal.
                         sp.take().unwrap().stop();
                         std::io::stdout().flush()?;
-                        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-                        print!("                      ");
-                        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                        crate::stream_render::clear_row()?;
                     }
 
                     let (next, print_separator) = on_answer(separator);
                     separator = next;
                     if print_separator {
-                        // stderr, beside the reasoning it separates — stdout
-                        // stays the answer and only the answer, so piping works.
-                        eprint!("\n\n---\n\n");
-                        std::io::stderr().flush()?;
+                        // Retire the summary's last row first: it arrives
+                        // without a trailing newline, so anything written after
+                        // it would land on the same row.
+                        if is_terminal {
+                            crate::stream_render::print_frame(&reasoning_renderer.finish())?;
+                        }
+                        // On the same stream as the reasoning it separates, and
+                        // ending on a fresh row at column 0, which is where the
+                        // renderer expects to start.
+                        write_reasoning(sink, "\n\n---\n\n")?;
                     }
 
                     // Before the `!is_terminal` early return below: the
@@ -1761,34 +1810,27 @@ pub async fn handle_reason_stream(
                         continue;
                     }
 
-                    let length = previous_output.lines().count();
-
-                    let output = crate::printer::highlight_markdown(&accumulated_text);
-
-                    let unprinted_lines = output
-                        .lines()
-                        .skip(if length == 0 { 0 } else { length - 1 })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-
-                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-                    print!("{unprinted_lines}");
-                    std::io::stdout().flush()?;
-
-                    // Update the previous output
-                    previous_output = output;
+                    crate::stream_render::print_frame(&renderer.push(&text))?;
                 }
                 llm_stream::event::ReasonEvent::Reasoning(text) => {
                     if is_terminal && sp.is_some() {
-                        // TODO: Find a better way to clean the spinner from the terminal.
                         sp.take().unwrap().stop();
                         std::io::stdout().flush()?;
-                        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-                        print!("                      ");
-                        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                        crate::stream_render::clear_row()?;
                     }
                     separator = on_reasoning(separator);
-                    eprint!("{}", text);
+
+                    if is_terminal {
+                        // `sink` is Stdout exactly when this branch is taken,
+                        // which is what makes printing a frame here correct:
+                        // the renderer writes to stdout and nowhere else.
+                        crate::stream_render::print_frame(&reasoning_renderer.push(&text))?;
+                    } else {
+                        // Piped: the summary goes to stderr as plain text.
+                        // Escape sequences would corrupt whatever is reading it,
+                        // and there is no cursor to move.
+                        write_reasoning(sink, &text)?;
+                    }
                 }
                 _ => log::debug!("{}", event),
             },
@@ -1798,16 +1840,26 @@ pub async fn handle_reason_stream(
             )) => break,
             Err(e) => {
                 if is_terminal && sp.is_some() {
-                    // TODO: Find a better way to clean the spinner from the terminal.
                     sp.take().unwrap().stop();
                     std::io::stdout().flush()?;
-                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
-                    print!("                      ");
-                    crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveToColumn(0))?;
+                    crate::stream_render::clear_row()?;
                 }
                 return Err(Error::from(e));
             }
         };
+    }
+
+    // Retires a last line that arrived without a newline, and leaves the cursor
+    // on a fresh row so the shell prompt does not land on the answer.
+    if is_terminal {
+        // `Owed` is precisely "a summary arrived and no answer followed", so it
+        // is the one state in which the summary has not already been retired by
+        // the separator above. Finishing it unconditionally would repaint the
+        // row the answer sits on and wipe its last line.
+        if separator == Separator::Owed {
+            crate::stream_render::print_frame(&reasoning_renderer.finish())?;
+        }
+        crate::stream_render::print_frame(&renderer.finish())?;
     }
 
     if !args.no_cache {
@@ -1914,6 +1966,23 @@ mod separator_tests {
         // Owed, never printed: there is no answer to separate the summary from,
         // so the stream ends with no rule. That is correct.
         assert_eq!(on_reasoning(Separator::default()), Separator::Owed);
+    }
+}
+
+#[cfg(test)]
+mod reasoning_sink_tests {
+    use super::{reasoning_sink, ReasoningSink};
+
+    #[test]
+    fn a_terminal_reads_the_summary_beside_the_answer() {
+        assert_eq!(reasoning_sink(true), ReasoningSink::Stdout);
+    }
+
+    #[test]
+    fn a_pipe_keeps_stdout_to_the_answer_alone() {
+        // The contract `llm-stream --last | pbcopy` depends on. Thinking on
+        // stdout here would be pasted along with the answer.
+        assert_eq!(reasoning_sink(false), ReasoningSink::Stderr);
     }
 }
 

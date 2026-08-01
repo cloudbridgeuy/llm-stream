@@ -16,6 +16,10 @@ _Avoid_: tokens, auth file (be specific: say "credentials" for the concept, "`au
 The `--api chatgpt` provider (aliases `chat-gpt`, `codex`) that streams model answers using ChatGPT sign-in credentials, over OpenAI's private Responses API, rather than a metered API key.
 _Avoid_: ChatGPT API (there is no public "ChatGPT API"; this is the undocumented Responses API used by Codex)
 
+**Summary part**:
+One numbered block of a reasoning summary. The server numbers the parts and sends no marker at a seam, so a part boundary is only visible as the number changing.
+_Avoid_: chunk, delta (a delta is one wire message; a part spans many)
+
 ## Behavior
 
 ### Requirement: ChatGPT sign-in
@@ -104,11 +108,21 @@ Running `llm-stream --api chatgpt` sends the prompt, and any conversation histor
 - **THEN** the request asks the model for that level of effort
 - **AND** the answer streams to stdout as normal, with no reasoning summary
 
-#### Scenario: Reasoning summary
-- **WHEN** the operator runs `llm-stream --api chatgpt --reasoning-summary "<prompt>"`
-- **THEN** the model's reasoning summary, if it produces one, streams to stderr
-- **AND** a `---` rule is printed to stderr between the summary and the answer
-- **AND** the answer streams to stdout
+#### Scenario: Reasoning summary on a terminal
+- **WHEN** the operator runs `llm-stream --api chatgpt --reasoning-summary "<prompt>"` on a terminal
+- **THEN** the model's reasoning summary, if it produces one, streams to stdout beside the answer it precedes, syntax-highlighted the same way the answer is
+- **AND** a `---` rule is printed to stdout between the summary and the answer
+- **AND** the answer streams to stdout after it
+
+#### Scenario: Reasoning summary with stdout piped
+- **WHEN** the operator runs the same command with stdout piped or redirected
+- **THEN** the summary and the `---` rule go to stderr as plain text, carrying no escape sequences
+- **AND** stdout holds the answer and nothing else
+
+#### Scenario: A summary of several parts
+- **WHEN** the model's summary arrives as more than one numbered part
+- **THEN** a blank line separates each part from the one before it, so no two parts share a row
+- **AND** the first part is not preceded by a blank line
 
 #### Scenario: Reasoning summary the model declines to produce
 - **WHEN** the operator runs `llm-stream --api chatgpt --reasoning-summary "<prompt>"` and the model produces no summary
@@ -131,7 +145,7 @@ The config file's top-level `reasoning_effort`, and a preset's `reasoning_effort
 - **THEN** the flag's value is used
 
 ### Requirement: Reasoning stream separator
-Any provider whose stream can carry both a reasoning summary and answer text (`chatgpt --reasoning-summary`, and `--api deepseek`, which always streams reasoning) prints the `---` rule to stderr, and only when reasoning text actually arrived — never to stdout, and never when the stream carried no reasoning.
+Any provider whose stream can carry both a reasoning summary and answer text (`chatgpt --reasoning-summary`, and `--api deepseek`, which always streams reasoning) prints a `---` rule between the two, and only when reasoning text actually arrived — never when the stream carried no reasoning. The rule travels on the same stream as the summary it separates: stdout on a terminal, stderr when stdout is piped, so a pipe never receives a stray rule.
 
 #### Scenario: DeepSeek's answer stream has no stray separator
 - **WHEN** the operator runs `llm-stream --api deepseek "<prompt>" | cat`
@@ -204,6 +218,13 @@ A conversation's `title`, `description`, and `parent` belong to the conversation
 - **WHEN** the operator runs `llm-stream --from <id> "<prompt>"` on a conversation that was created with `--fork`
 - **THEN** the rewritten cache file still names the conversation it forked off, so `llm-stream --list` keeps showing its lineage
 
+### Requirement: Rendering an answer on a terminal
+On a terminal an answer is rendered as it arrives, and the run leaves the cursor on a row of its own.
+
+#### Scenario: An answer whose last chunk carries no newline
+- **WHEN** the model's final chunk ends part-way through a line and the operator is on a terminal
+- **THEN** the CLI closes that row before it returns, so the shell prompt appears below the answer rather than on top of its last line
+
 ### Requirement: Cached answers do not depend on where stdout points
 What a conversation records is the same whether the operator watched the answer on a terminal or piped it somewhere. Redirecting stdout changes how the answer is rendered, never whether it is remembered.
 
@@ -216,9 +237,9 @@ What a conversation records is the same whether the operator watched the answer 
 - **WHEN** the operator continues a conversation whose earlier turns were produced by piped runs
 - **THEN** the model receives those earlier answers as history
 
-#### Scenario: Piping a reasoning provider's answer
-- **WHEN** the operator runs `llm-stream --api deepseek "<prompt>" | cat`, or `--api chatgpt --reasoning-summary`
-- **THEN** the conversation records the answer, and not the reasoning summary, which stays on stderr
+#### Scenario: A reasoning provider's summary is not recorded
+- **WHEN** the operator runs `llm-stream --api deepseek "<prompt>"`, or `--api chatgpt --reasoning-summary`, on a terminal or through a pipe
+- **THEN** the conversation records the answer alone, whichever stream the reasoning summary was written to
 
 ### Requirement: Printing a stored conversation
 `--show` prints a stored conversation without calling the model. `--last` narrows that to the final message alone, and is a narrowing of `--show` rather than a modifier on it: it prints on its own. Either way the conversation is named by `--from` or `--from-last`, and a run that cannot name one says so instead of printing nothing.

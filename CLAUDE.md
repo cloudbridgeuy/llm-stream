@@ -40,6 +40,14 @@ This is a Rust workspace with three main components:
 - Streaming output with spinners and colored terminal output
 - ChatGPT subscription sign-in (`--login`, `--login-status`, `--logout`), stored at `<config_dir>/auth.json` with mode `0600`
 - Reasoning controls for the `chatgpt` provider: `--reasoning-effort`, `--reasoning-summary`, `--models`
+- A reasoning summary is written to stdout on a terminal and to stderr when stdout is piped, so
+  `llm-stream --last | pbcopy` still copies the answer alone. It is never cached either way, and the
+  server decides whether to produce one at all: measured live on 2026-07-30, `high` produced none
+  where `xhigh` did.
+- The summary arrives as numbered *parts*, one heading each, with no separator between them on the
+  wire — `summary_index` changing is the only evidence of a seam. `chatgpt::SummaryJoin` inserts the
+  blank line, without which nine headings printed as `**One****Two**…` on one row. On a terminal the
+  summary is then rendered through `stream_render`, the same markdown renderer as the answer.
 
 ### Build Tools (`xtask/`)
 - Custom build automation following the cargo-xtask pattern

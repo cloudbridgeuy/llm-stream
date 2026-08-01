@@ -236,7 +236,15 @@ pub enum ResponseEvent {
     #[serde(rename = "response.output_text.delta")]
     OutputTextDelta { delta: String },
     #[serde(rename = "response.reasoning_summary_text.delta")]
-    ReasoningDelta { delta: String },
+    ReasoningDelta {
+        delta: String,
+        /// Which summary part this delta belongs to. The server numbers the
+        /// parts and sends no separator between them, so this is the only
+        /// evidence that one part ended and the next began. Defaulted rather
+        /// than required: a delta that arrives without it is still a delta.
+        #[serde(default)]
+        summary_index: u32,
+    },
     #[serde(rename = "response.completed")]
     Completed,
     /// A failure reported mid-stream, on an otherwise successful HTTP 200.
@@ -298,7 +306,7 @@ pub fn to_reason_event(event: ResponseEvent) -> ReasonEvent {
 
     match event {
         ResponseEvent::OutputTextDelta { delta } => ReasonEvent::Delta(delta),
-        ResponseEvent::ReasoningDelta { delta } => ReasonEvent::Reasoning(delta),
+        ResponseEvent::ReasoningDelta { delta, .. } => ReasonEvent::Reasoning(delta),
         ResponseEvent::Completed | ResponseEvent::Unknown => ReasonEvent::Empty,
         // Unreachable: `failure_message` returned `Some` for these above. Listed
         // rather than folded into a `_` arm so that a new variant is a compile
@@ -306,6 +314,50 @@ pub fn to_reason_event(event: ResponseEvent) -> ReasonEvent {
         ResponseEvent::StreamError { .. } | ResponseEvent::ResponseFailed { .. } => {
             ReasonEvent::Empty
         }
+    }
+}
+
+/// What goes between two reasoning summary parts.
+///
+/// The server streams parts, not prose. Each `summary_index` is its own block,
+/// none of them ends in a newline, and nothing on the wire marks the seam — so
+/// writing the deltas out in arrival order ran the parts together, which is how
+/// a summary of nine headings reached the terminal as
+/// `**One****Two****Three**` on a single row.
+pub const PART_BREAK: &str = "\n\n";
+
+/// Remembers which summary part the stream is in.
+///
+/// The only state [`Client::reason`] keeps, and it exists because the seam
+/// between two parts is implied by `summary_index` changing rather than
+/// announced: no function that sees one event at a time can find it.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct SummaryJoin {
+    seen: Option<u32>,
+}
+
+impl SummaryJoin {
+    /// Projects one event the way [`to_reason_event`] does, and inserts the
+    /// paragraph break the server implies but does not send.
+    ///
+    /// The break precedes the first delta of every part *after* the first, so a
+    /// summary never opens with blank rows.
+    pub fn project(&mut self, event: ResponseEvent) -> ReasonEvent {
+        if let ResponseEvent::ReasoningDelta {
+            delta,
+            summary_index,
+        } = event
+        {
+            let opens_a_part = self.seen.is_some_and(|seen| seen != summary_index);
+            self.seen = Some(summary_index);
+            return ReasonEvent::Reasoning(if opens_a_part {
+                format!("{PART_BREAK}{delta}")
+            } else {
+                delta
+            });
+        }
+
+        to_reason_event(event)
     }
 }
 
@@ -490,11 +542,21 @@ impl Client {
 
         let client = self.request(message_body)?;
 
+        // Carries the summary part boundary across events. See `SummaryJoin`.
+        let mut join = SummaryJoin::default();
+
         let stream = Box::pin(client.stream())
             .or_else(|error| async move { Err(map_stream_error(error).await) })
-            .map(|result| {
+            .map(move |result| {
                 result.and_then(|event| match event {
                     SSE::Event(ev) => {
+                        // The endpoint is undocumented and adds event types
+                        // without notice, so the raw payload is the only way to
+                        // tell "the server sent nothing" from "we classified it
+                        // as `Unknown`". Carries no credentials: the tokens
+                        // travel in the request headers, never in an SSE body.
+                        log::debug!("event: {}", ev.data);
+
                         let event = classify(&ev.data);
                         // Raised to the `Result` rather than left as
                         // `ReasonEvent::Err`: the CLI's reasoning handler has no
@@ -502,7 +564,7 @@ impl Client {
                         if let Some(message) = failure_message(&event) {
                             return Err(Error::ApiError(message));
                         }
-                        Ok(to_reason_event(event))
+                        Ok(join.project(event))
                     }
                     SSE::Connected(_) => Ok(ReasonEvent::Connected),
                     SSE::Comment(comment) => Ok(ReasonEvent::Comment(comment)),
@@ -656,8 +718,21 @@ mod tests {
             "../tests/fixtures/reasoning_summary_delta.json"
         ));
         assert!(
-            matches!(ev, ResponseEvent::ReasoningDelta { ref delta } if delta.contains("17 times 23")),
+            matches!(ev, ResponseEvent::ReasoningDelta { ref delta, summary_index: 0 } if delta.contains("17 times 23")),
             "got {ev:?}"
+        );
+    }
+
+    #[test]
+    fn a_delta_without_a_summary_index_still_classifies() {
+        // Every field on this endpoint is one the server may stop sending.
+        let ev = classify(r#"{"type":"response.reasoning_summary_text.delta","delta":"x"}"#);
+        assert_eq!(
+            ev,
+            ResponseEvent::ReasoningDelta {
+                delta: "x".to_string(),
+                summary_index: 0,
+            }
         );
     }
 
@@ -694,7 +769,7 @@ mod tests {
             ReasonEvent::Delta(ref s) if s == "x"
         ));
         assert!(matches!(
-            to_reason_event(ResponseEvent::ReasoningDelta { delta: "r".to_string() }),
+            to_reason_event(ResponseEvent::ReasoningDelta { delta: "r".to_string(), summary_index: 0 }),
             ReasonEvent::Reasoning(ref s) if s == "r"
         ));
         assert!(matches!(
@@ -704,6 +779,86 @@ mod tests {
         assert!(matches!(
             to_reason_event(ResponseEvent::Unknown),
             ReasonEvent::Empty
+        ));
+    }
+
+    /// Collects the reasoning text one join produced for a run of deltas, the
+    /// way the CLI concatenates them on screen.
+    fn joined(deltas: &[(u32, &str)]) -> String {
+        let mut join = SummaryJoin::default();
+        let mut out = String::new();
+        for &(summary_index, delta) in deltas {
+            if let ReasonEvent::Reasoning(text) = join.project(ResponseEvent::ReasoningDelta {
+                delta: delta.to_string(),
+                summary_index,
+            }) {
+                out.push_str(&text);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn deltas_within_one_part_are_concatenated_untouched() {
+        // A part arrives in pieces mid-word. Inserting anything between them
+        // would break the word.
+        assert_eq!(joined(&[(0, "**Calc"), (0, "ulating"), (0, "**")]), "**Calculating**");
+    }
+
+    #[test]
+    fn a_new_part_opens_with_a_blank_line() {
+        // The bug report: nine summary headings printed as one unreadable row.
+        assert_eq!(
+            joined(&[(0, "**One**"), (1, "**Two**"), (2, "**Three**")]),
+            "**One**\n\n**Two**\n\n**Three**"
+        );
+    }
+
+    #[test]
+    fn the_first_part_is_not_preceded_by_a_break() {
+        // A summary that opened with blank rows would push the first heading
+        // off the top of a short terminal.
+        assert_eq!(joined(&[(0, "**One**")]), "**One**");
+    }
+
+    #[test]
+    fn a_summary_that_starts_at_a_nonzero_index_still_opens_flush() {
+        // Nothing promises the first part we see is numbered 0 — a resumed or
+        // re-ordered stream need not start there, and "first seen" is the only
+        // thing that matters for the leading break.
+        assert_eq!(joined(&[(3, "**One**"), (4, "**Two**")]), "**One**\n\n**Two**");
+    }
+
+    #[test]
+    fn an_unrelated_event_between_parts_does_not_lose_the_seam() {
+        // `response.completed`, a comment, an unknown type — plenty arrives
+        // between two parts, and none of it may reset the boundary.
+        let mut join = SummaryJoin::default();
+        join.project(ResponseEvent::ReasoningDelta {
+            delta: "**One**".to_string(),
+            summary_index: 0,
+        });
+        assert!(matches!(
+            join.project(ResponseEvent::Unknown),
+            ReasonEvent::Empty
+        ));
+        assert!(matches!(
+            join.project(ResponseEvent::ReasoningDelta {
+                delta: "**Two**".to_string(),
+                summary_index: 1,
+            }),
+            ReasonEvent::Reasoning(ref s) if s == "\n\n**Two**"
+        ));
+    }
+
+    #[test]
+    fn joining_leaves_answer_deltas_alone() {
+        // The answer is cached verbatim. A break leaking into it would be
+        // written to disk.
+        let mut join = SummaryJoin::default();
+        assert!(matches!(
+            join.project(ResponseEvent::OutputTextDelta { delta: "x".to_string() }),
+            ReasonEvent::Delta(ref s) if s == "x"
         ));
     }
 

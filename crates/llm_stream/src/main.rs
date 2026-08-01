@@ -20,6 +20,7 @@ mod ollama;
 mod openai;
 mod prelude;
 mod printer;
+mod stream_render;
 
 use crate::prelude::*;
 
