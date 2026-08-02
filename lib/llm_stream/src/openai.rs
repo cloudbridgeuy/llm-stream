@@ -72,7 +72,7 @@ pub struct MessageBody {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_sequences: Option<Vec<String>>,
 
-    /// If set, partial message deltas will be sent, like in ChatGPT. Tokens will be sent as data-only server-sent events as they become available, with the stream terminated by a data: [DONE] message.
+    /// If set, partial message deltas will be sent, like in ChatGPT. Tokens will be sent as data-only server-sent events as they become available, with the stream terminated by a data: \[DONE\] message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
 

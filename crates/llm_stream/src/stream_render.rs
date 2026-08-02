@@ -82,7 +82,9 @@ pub struct Frame {
 /// this never sees an escape sequence and does not have to skip one.
 #[must_use]
 pub fn display_width(s: &str) -> usize {
-    s.chars().map(|c| UnicodeWidthChar::width(c).unwrap_or(0)).sum()
+    s.chars()
+        .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
+        .sum()
 }
 
 /// Pure. The byte offset in `s` of the first character that would carry the row
@@ -151,10 +153,7 @@ pub fn wrap_points(line: &str, width: usize, word_wrap: bool) -> Vec<usize> {
 /// on the raw line and applied to the highlighted one, so the two can never
 /// disagree about where a row ends.
 #[must_use]
-pub fn slice_spans<'a>(
-    spans: &[(Style, &'a str)],
-    points: &[usize],
-) -> Vec<Vec<(Style, &'a str)>> {
+pub fn slice_spans<'a>(spans: &[(Style, &'a str)], points: &[usize]) -> Vec<Vec<(Style, &'a str)>> {
     let mut rows = Vec::new();
     let mut current: Vec<(Style, &'a str)> = Vec::new();
     let mut offset = 0;
@@ -278,7 +277,9 @@ impl StreamRenderer {
     fn end_line(&mut self, frame: &mut Frame) {
         let (next, delimiter) = step_mode(&self.mode, &self.line);
         if !delimiter {
-            frame.finished.extend(self.rows().into_iter().skip(self.emitted));
+            frame
+                .finished
+                .extend(self.rows().into_iter().skip(self.emitted));
         }
         self.mode = next;
         self.line.clear();

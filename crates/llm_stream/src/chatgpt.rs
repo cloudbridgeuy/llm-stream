@@ -566,7 +566,10 @@ mod tests {
             Api::Mistral,
             Api::MistralFim,
         ] {
-            assert!(reads_api_credentials(Some(api)), "{api} lost its credential");
+            assert!(
+                reads_api_credentials(Some(api)),
+                "{api} lost its credential"
+            );
         }
     }
 

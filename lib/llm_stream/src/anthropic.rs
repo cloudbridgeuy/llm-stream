@@ -39,7 +39,7 @@ pub enum Role {
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct MessageBody {
     /// The model that will complete your prompt.
-    /// See this link for additional details and options: https://docs.anthropic.com/claude/docs/models-overview
+    /// See this link for additional details and options: <https://docs.anthropic.com/claude/docs/models-overview>
     pub model: String,
     /// Input messages.
     pub messages: Vec<Message>,

@@ -33,6 +33,18 @@ To install the llm-stream CLI tool, run:
 cargo install llm-stream-cli
 ```
 
+## Development
+
+The repository pins its Rust toolchain. Install the local task wrapper, then
+run the local quality checks:
+
+```bash
+cargo install --path xtask/cargo-xtask --locked
+cargo xtask lint
+```
+
+CI also checks rustdoc and the dependency policy in `deny.toml`.
+
 ## Usage
 
 ### Library
