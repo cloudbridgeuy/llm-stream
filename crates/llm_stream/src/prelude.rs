@@ -1050,7 +1050,8 @@ mod tests {
     }
 
     #[test]
-    fn test_preset_system_over_config_system() -> std::result::Result<(), Box<dyn std::error::Error>>
+    fn preset_system_overrides_config_system_through_parse_pipeline(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>>
     {
         let system = "preset system";
         let config_system = "config system";
@@ -1080,11 +1081,12 @@ mod tests {
             ..Default::default()
         };
 
+        let (args, config) = parse_args(args, config)?;
         let actual = merge_args_and_config(args, config)?;
 
         assert_eq!(
             expected.conversation, actual.conversation,
-            "The system arg should overwrite the preset system"
+            "The preset system should override the top-level config system"
         );
 
         Ok(())
