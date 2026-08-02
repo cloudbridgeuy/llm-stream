@@ -38,6 +38,14 @@ Cargo Rail is optional. Its check is marked skipped when Cargo reports that
 the subcommand or cargo-rail executable is unavailable; other Rail failures
 remain failures. Install Rail separately if you want that check enforced.
 
+### CI quality gate
+
+CI uses the repository's pinned Rust toolchain and runs five independent
+required checks: formatting, Clippy with warnings denied, all workspace tests
+and targets, rustdoc with warnings denied, and cargo-deny. `cargo xtask lint`
+remains the local convenience path; optional cargo-rail is not a CI
+requirement.
+
 Useful lint options:
 
 ~~~sh

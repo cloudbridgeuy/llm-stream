@@ -43,7 +43,7 @@ pub struct MessageBody {
     pub stop: Option<Vec<String>>,
     /// The prompt(s) to generate completions for, encoded as a list of dict with role and content.
     pub messages: Vec<Message>,
-    /// Whether to stream back partial progress. If set, tokens will be sent as data-only server-side events as they become available, with the stream terminated by a data: [DONE] message. Otherwise, the server will hold the request open until the timeout or until completion, with the response containing the full result as JSON.
+    /// Whether to stream back partial progress. If set, tokens will be sent as data-only server-side events as they become available, with the stream terminated by a data: \[DONE\] message. Otherwise, the server will hold the request open until the timeout or until completion, with the response containing the full result as JSON.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
     /// The seed to use for random sampling. If set, different calls will generate deterministic results.

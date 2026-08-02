@@ -802,7 +802,10 @@ mod tests {
     fn deltas_within_one_part_are_concatenated_untouched() {
         // A part arrives in pieces mid-word. Inserting anything between them
         // would break the word.
-        assert_eq!(joined(&[(0, "**Calc"), (0, "ulating"), (0, "**")]), "**Calculating**");
+        assert_eq!(
+            joined(&[(0, "**Calc"), (0, "ulating"), (0, "**")]),
+            "**Calculating**"
+        );
     }
 
     #[test]
@@ -826,7 +829,10 @@ mod tests {
         // Nothing promises the first part we see is numbered 0 — a resumed or
         // re-ordered stream need not start there, and "first seen" is the only
         // thing that matters for the leading break.
-        assert_eq!(joined(&[(3, "**One**"), (4, "**Two**")]), "**One**\n\n**Two**");
+        assert_eq!(
+            joined(&[(3, "**One**"), (4, "**Two**")]),
+            "**One**\n\n**Two**"
+        );
     }
 
     #[test]

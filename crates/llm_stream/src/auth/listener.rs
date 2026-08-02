@@ -120,7 +120,7 @@ fn respond(socket: &mut TcpStream, status: u16, title: &str, message: &str) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use std::io::{Read, Write};
 
     #[test]
     fn the_preferred_port_needs_no_notice() {
@@ -175,6 +175,8 @@ mod tests {
                 "GET /auth/callback?code=xyz&state=st HTTP/1.1\r\nHost: localhost\r\n\r\n"
             )
             .expect("write");
+            let mut response = String::new();
+            socket.read_to_string(&mut response).expect("read response");
         });
         assert_eq!(listener.await_code("st").expect("await").as_str(), "xyz");
     }

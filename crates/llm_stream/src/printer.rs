@@ -15,7 +15,8 @@ use syntect::{
     util::LinesWithEndings,
 };
 
-pub(crate) static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+pub(crate) static SYNTAX_SET: LazyLock<SyntaxSet> =
+    LazyLock::new(SyntaxSet::load_defaults_newlines);
 pub(crate) static THEME: LazyLock<Theme> = LazyLock::new(|| {
     let theme_data = include_str!("../assets/themes/tokyonight/tokyonight-storm.tmTheme");
     ThemeSet::load_from_reader(&mut std::io::Cursor::new(theme_data)).unwrap()
