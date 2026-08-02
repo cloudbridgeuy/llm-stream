@@ -305,7 +305,7 @@ pub fn parse_args(mut args: Args, config: Config) -> Result<(Args, Config)> {
             if args.temperature.is_none() {
                 args.temperature = p.temperature;
             }
-            if args.system.is_none() {
+            if args.system.is_none() && args.template.is_none() {
                 args.system = p.system;
             }
             if args.max_tokens.is_none() {
@@ -1172,6 +1172,7 @@ mod tests {
             ..Default::default()
         };
 
+        let (args, config) = parse_args(args, config)?;
         let actual = merge_args_and_config(args, config)?;
 
         assert_eq!(
