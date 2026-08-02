@@ -23,11 +23,12 @@ pub async fn handle_stream(
 ) -> Result<()> {
     let mut accumulated_text = String::new();
 
-    let is_terminal = atty::is(atty::Stream::Stdout);
+    let is_terminal = std::io::stdout().is_terminal();
 
     // Rendering is incremental and append-only. See stream_render for why
     // re-rendering the whole answer each chunk could not be made to work.
-    let mut renderer = crate::stream_render::StreamRenderer::new(crate::stream_render::terminal_width());
+    let mut renderer =
+        crate::stream_render::StreamRenderer::new(crate::stream_render::terminal_width());
 
     let mut sp = if args.quiet.is_none() || (args.quiet == Some(false) && is_terminal) {
         Some(spinners::Spinner::new(
@@ -878,8 +879,14 @@ mod tests {
             Some("https://chatgpt.com/backend-api/codex"),
             "the endpoint this provider does read was dropped"
         );
-        assert_eq!(actual.api_env, None, "env reached a provider that ignores it");
-        assert_eq!(actual.api_key, None, "key reached a provider that ignores it");
+        assert_eq!(
+            actual.api_env, None,
+            "env reached a provider that ignores it"
+        );
+        assert_eq!(
+            actual.api_key, None,
+            "key reached a provider that ignores it"
+        );
         assert!(
             crate::chatgpt::inert_flag_warnings(&actual).is_empty(),
             "a plain invocation warned about flags the operator never typed"
@@ -1051,8 +1058,7 @@ mod tests {
 
     #[test]
     fn preset_system_overrides_config_system_through_parse_pipeline(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>>
-    {
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let system = "preset system";
         let config_system = "config system";
         let preset_name = "preset_name";
@@ -1351,7 +1357,7 @@ content = "hello"
 
     /// Reads back the conversation a stream handler cached under `id`.
     ///
-    /// `cargo test` captures stdout, so `atty` reports it is not a terminal and
+    /// `cargo test` captures stdout, so `IsTerminal` reports it is not a terminal and
     /// these tests exercise the piped branch — the one that used to cache
     /// nothing — without having to fake a tty.
     fn cached_conversation(dir: &tempfile::TempDir, id: &str) -> Conversation {
@@ -1556,7 +1562,7 @@ where
     T: Row + Title + 'static,
     for<'a> &'a T: Row,
 {
-    let is_terminal: bool = atty::is(atty::Stream::Stdout);
+    let is_terminal = std::io::stdout().is_terminal();
 
     let table = if is_terminal {
         lines.with_title()
@@ -1790,7 +1796,7 @@ pub async fn handle_reason_stream(
 ) -> Result<()> {
     let mut accumulated_text = String::new();
 
-    let is_terminal = atty::is(atty::Stream::Stdout);
+    let is_terminal = std::io::stdout().is_terminal();
     let sink = reasoning_sink(is_terminal);
 
     // Rendering is incremental and append-only. See stream_render for why
