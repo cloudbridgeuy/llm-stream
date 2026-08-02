@@ -144,6 +144,17 @@ The config file's top-level `reasoning_effort`, and a preset's `reasoning_effort
 - **WHEN** the operator passes `--reasoning-effort` and the config file or preset also sets one
 - **THEN** the flag's value is used
 
+### Requirement: Template and preset system precedence
+An explicitly selected template's rendered system text overrides a selected preset's system text. An explicit `--system` argument overrides both.
+
+#### Scenario: Template and preset both set a system message
+- **WHEN** the operator selects a template with a `system` value and a preset with a `system` value
+- **THEN** the rendered template system message is used
+
+#### Scenario: Explicit system argument
+- **WHEN** the operator passes `--system` while selecting a template and a preset
+- **THEN** the explicit system argument is used
+
 ### Requirement: Reasoning stream separator
 Any provider whose stream can carry both a reasoning summary and answer text (`chatgpt --reasoning-summary`, and `--api deepseek`, which always streams reasoning) prints a `---` rule between the two, and only when reasoning text actually arrived — never when the stream carried no reasoning. The rule travels on the same stream as the summary it separates: stdout on a terminal, stderr when stdout is piped, so a pipe never receives a stray rule.
 
