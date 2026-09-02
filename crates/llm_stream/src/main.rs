@@ -9,6 +9,7 @@ mod anthropic;
 mod args;
 mod auth;
 mod chatgpt;
+mod claude;
 mod config;
 mod conversation;
 mod error;
@@ -231,6 +232,7 @@ async fn try_main() -> Result<()> {
         // reasoning stream.
         Some(Api::ChatGpt) if args.reasoning_summary => chatgpt::reason(args).await,
         Some(Api::ChatGpt) => chatgpt::run(args).await,
+        Some(Api::Claude) => claude::run(args).await,
         None => Err(Error::ApiNotSpecified),
     }
 }

@@ -250,3 +250,162 @@ fn version_reports_the_binary_name_and_the_package_version() {
     // anyone remembering to edit it.
     assert_eq!(stdout.trim(), expected, "stdout: {stdout}");
 }
+
+/// Coverage of the `claude` provider, which spawns a child process rather than
+/// opening a socket.
+///
+/// That is what makes it testable offline where the other providers are not: a
+/// stub script on `LLM_STREAM_CLAUDE_BIN` replays a fixture of the JSON Lines
+/// the real binary emits, and the whole spawn/parse/print path runs for free.
+#[cfg(unix)]
+mod claude {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// Runs the CLI with `--api claude` pointed at a stub of the given script.
+    fn run_with_stub(script: &str, args: &[&str]) -> (bool, String, String) {
+        let dir = tempfile::tempdir().expect("could not create a temporary directory");
+        let stub = dir.path().join("claude-stub.sh");
+        fs::write(&stub, script).expect("could not write the stub");
+        fs::set_permissions(&stub, fs::Permissions::from_mode(0o755))
+            .expect("could not make the stub executable");
+
+        let output = Command::new(env!("CARGO_BIN_EXE_llm-stream"))
+            .arg("--config-dir")
+            .arg(dir.path())
+            .arg("--api")
+            .arg("claude")
+            .arg("--no-cache")
+            .args(args)
+            .env("LLM_STREAM_CLAUDE_BIN", &stub)
+            .stdin(Stdio::null())
+            .output()
+            .expect("could not run the llm-stream binary");
+
+        (
+            output.status.success(),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    }
+
+    /// A stub that drains the prompt and replays `lines` as its own stdout.
+    fn replaying(lines: &str) -> String {
+        format!("#!/bin/sh\ncat > /dev/null\ncat <<'JSONL'\n{lines}\nJSONL\n")
+    }
+
+    fn text_delta(text: &str) -> String {
+        format!(
+            r#"{{"type":"stream_event","event":{{"type":"content_block_delta","index":1,"delta":{{"type":"text_delta","text":"{text}"}}}}}}"#
+        )
+    }
+
+    const SUCCESS: &str = r#"{"type":"result","subtype":"success","is_error":false,"result":"x"}"#;
+
+    #[test]
+    fn text_deltas_are_joined_into_the_answer() {
+        let fixture = format!(
+            "{}\n{}\n{SUCCESS}",
+            text_delta("Hello, "),
+            text_delta("world.")
+        );
+        let (ok, stdout, stderr) = run_with_stub(&replaying(&fixture), &["hi"]);
+
+        assert!(ok, "stdout: {stdout}\nstderr: {stderr}");
+        assert_eq!(stdout, "Hello, world.", "stderr: {stderr}");
+    }
+
+    #[test]
+    fn thinking_deltas_never_reach_the_answer() {
+        // This provider streams text only. A thinking delta shares the
+        // `content_block_delta` path, so nothing but the delta's own type tells
+        // the two apart.
+        let thinking = r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"SECRET"}}}"#;
+        let fixture = format!("{thinking}\n{}\n{SUCCESS}", text_delta("visible"));
+        let (ok, stdout, stderr) = run_with_stub(&replaying(&fixture), &["hi"]);
+
+        assert!(ok, "stdout: {stdout}\nstderr: {stderr}");
+        assert_eq!(stdout, "visible", "stderr: {stderr}");
+        assert!(!stdout.contains("SECRET"), "stdout: {stdout}");
+    }
+
+    #[test]
+    fn housekeeping_events_are_ignored() {
+        let noise = [
+            r#"{"type":"system","subtype":"init","session_id":"x"}"#,
+            r#"{"type":"assistant","message":{"content":[]}}"#,
+            r#"{"type":"stream_event","event":{"type":"message_start"}}"#,
+            r#"{"type":"rate_limit_event","status":"allowed"}"#,
+        ]
+        .join("\n");
+        let fixture = format!("{noise}\n{}\n{SUCCESS}", text_delta("only this"));
+        let (ok, stdout, stderr) = run_with_stub(&replaying(&fixture), &["hi"]);
+
+        assert!(ok, "stdout: {stdout}\nstderr: {stderr}");
+        assert_eq!(stdout, "only this", "stderr: {stderr}");
+    }
+
+    #[test]
+    fn the_prompt_reaches_the_child_on_stdin() {
+        // The stub answers with whatever it was asked, which is the only way to
+        // prove the prompt was piped in rather than dropped.
+        let script = "#!/bin/sh\nprompt=$(cat)\nprintf '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"%s\"}}}\\n' \"$prompt\"\n";
+        let (ok, stdout, stderr) = run_with_stub(script, &["marco polo"]);
+
+        assert!(ok, "stdout: {stdout}\nstderr: {stderr}");
+        assert_eq!(stdout, "marco polo", "stderr: {stderr}");
+    }
+
+    #[test]
+    fn a_failed_result_line_fails_the_run() {
+        // The real binary exits 0 and reports the failure here, so exit status
+        // alone would let this look like an empty answer.
+        let failure = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"api_error_status":"rate limit exceeded"}"#;
+        let (ok, stdout, stderr) = run_with_stub(&replaying(failure), &["hi"]);
+
+        assert!(!ok, "a failed result must fail the run\nstdout: {stdout}");
+        assert!(stderr.contains("rate limit exceeded"), "stderr: {stderr}");
+    }
+
+    #[test]
+    fn a_nonzero_exit_surfaces_the_childs_stderr() {
+        let script = "#!/bin/sh\ncat > /dev/null\necho 'the stub refused' >&2\nexit 1\n";
+        let (ok, stdout, stderr) = run_with_stub(script, &["hi"]);
+
+        assert!(!ok, "a nonzero exit must fail the run\nstdout: {stdout}");
+        assert!(stderr.contains("the stub refused"), "stderr: {stderr}");
+    }
+
+    #[test]
+    fn a_missing_binary_says_how_to_fix_it() {
+        let dir = tempfile::tempdir().expect("could not create a temporary directory");
+        let output = Command::new(env!("CARGO_BIN_EXE_llm-stream"))
+            .arg("--config-dir")
+            .arg(dir.path())
+            .args(["--api", "claude", "--no-cache", "hi"])
+            .env("LLM_STREAM_CLAUDE_BIN", "llm-stream-no-such-binary")
+            .stdin(Stdio::null())
+            .output()
+            .expect("could not run the llm-stream binary");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "stderr: {stderr}");
+        assert!(stderr.contains("LLM_STREAM_CLAUDE_BIN"), "stderr: {stderr}");
+    }
+
+    #[test]
+    fn ignored_sampling_knobs_are_announced_on_stderr() {
+        // Silence here would let an operator believe a preset's temperature was
+        // applied. Stderr, not stdout, so a piped answer stays clean.
+        let fixture = format!("{}\n{SUCCESS}", text_delta("ok"));
+        let (ok, stdout, stderr) = run_with_stub(
+            &replaying(&fixture),
+            &["--temperature", "0.5", "--top-k", "40", "hi"],
+        );
+
+        assert!(ok, "stdout: {stdout}\nstderr: {stderr}");
+        assert_eq!(stdout, "ok", "the warning must not reach stdout");
+        assert!(stderr.contains("--temperature"), "stderr: {stderr}");
+        assert!(stderr.contains("--top-k"), "stderr: {stderr}");
+    }
+}

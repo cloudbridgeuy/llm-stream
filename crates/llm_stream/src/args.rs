@@ -30,6 +30,8 @@ pub enum Api {
     MistralFim,
     #[value(name = "chatgpt", alias = "chat-gpt", alias = "codex")]
     ChatGpt,
+    #[value(name = "claude", alias = "claude-code")]
+    Claude,
 }
 
 // Implement Display for `Api`
@@ -45,6 +47,7 @@ impl std::fmt::Display for Api {
             Api::Ollama => write!(f, "Ollama"),
             Api::DeepSeek => write!(f, "DeepSeek"),
             Api::ChatGpt => write!(f, "ChatGpt"),
+            Api::Claude => write!(f, "Claude"),
         }
     }
 }
@@ -85,6 +88,11 @@ impl FromStr for Api {
             "ChatGPT" => Ok(Api::ChatGpt),
             "chat-gpt" => Ok(Api::ChatGpt),
             "codex" => Ok(Api::ChatGpt),
+            "claude" => Ok(Api::Claude),
+            "Claude" => Ok(Api::Claude),
+            "claude-code" => Ok(Api::Claude),
+            "claude_code" => Ok(Api::Claude),
+            "ClaudeCode" => Ok(Api::Claude),
             _ => Err(Error::InvalidAPI),
         }
     }
@@ -96,13 +104,20 @@ impl FromStr for Api {
 #[command(
     long_about = "This Rust-based CLI enables users to interact with various Large Language Models
 (LLMs) directly from the terminal. Through this tool, you can send prompts to OpenAI,
-Anthropic, Google, Mistral, Mistral FIM, Ollama, Groq, DeepSeek, or a ChatGPT subscription
-account, and receive and handle responses from these models.
+Anthropic, Google, Mistral, Mistral FIM, Ollama, Groq, DeepSeek, a ChatGPT subscription
+account, or a local Claude Code install, and receive and handle responses from these models.
 
 The `chatgpt` provider works differently from the rest: it signs in to a ChatGPT
 subscription with `--login` instead of taking an API key, it is steered with
 `--reasoning-effort` and `--reasoning-summary` rather than `--temperature` and `--top-p`,
 and `--models` reports which models the signed-in account may use.
+
+The `claude` provider reaches no network endpoint at all: it runs the `claude` binary
+already installed on this machine and streams its answer, which means it bills a Claude
+subscription rather than an API key. It honours `--model` and `--system` and streams answer
+text only; the CLI it drives exposes no sampling controls, so `--temperature`, `--top-p`,
+`--top-k`, `--max-tokens` and `--min-tokens` are ignored with a warning. Set
+LLM_STREAM_CLAUDE_BIN when the binary is not named `claude` or is not on PATH.
 
 The tool offers extensive configuration options, allowing you
 to specify parameters like model type, maximum and minimum tokens, temperature, top-p
