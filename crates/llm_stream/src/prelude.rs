@@ -853,6 +853,39 @@ mod tests {
     }
 
     #[test]
+    fn a_nvidia_selection_drops_a_chatgpt_configs_fields(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // A config that describes the chatgpt endpoint must not hand its
+        // `base_url`, credential, or `model` to a provider that reads a
+        // different one.
+        let args = Args {
+            api: Some(Api::Nvidia),
+            ..Default::default()
+        };
+
+        let config = Config {
+            api: Some(Api::ChatGpt),
+            base_url: Some("https://chatgpt.com/backend-api/codex".to_string()),
+            env: Some("OPENAI_API_KEY".to_string()),
+            key: Some("secret".to_string()),
+            model: Some("gpt-4o".to_string()),
+            ..Default::default()
+        };
+
+        let actual = merge_args_and_config(args, config)?;
+
+        assert_eq!(
+            actual.api_base_url, None,
+            "base_url leaked across providers"
+        );
+        assert_eq!(actual.api_env, None, "env leaked across providers");
+        assert_eq!(actual.api_key, None, "key leaked across providers");
+        assert_eq!(actual.model, None, "model leaked across providers");
+
+        Ok(())
+    }
+
+    #[test]
     fn a_chatgpt_config_keeps_its_url_but_not_its_credentials(
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         // The shape every real chatgpt config has: `api` and `base_url` are
