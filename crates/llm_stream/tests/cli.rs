@@ -234,6 +234,45 @@ fn nvidia_without_credentials_names_the_missing_variable() {
 }
 
 #[test]
+fn reasoning_effort_is_not_filtered_by_clap() {
+    // `max` was never in the clap value list, so reaching the provider proves
+    // the flag is passed through unparsed rather than validated up front.
+    let dir = match tempfile::tempdir() {
+        Ok(dir) => dir,
+        Err(e) => panic!("could not create a temporary config directory: {e}"),
+    };
+    let mut command = Command::new(env!("CARGO_BIN_EXE_llm-stream"));
+    command
+        .arg("--config-dir")
+        .arg(dir.path())
+        .args(["--api", "nvidia", "--reasoning-effort", "max", "hi"])
+        .env_remove("NVIDIA_API_KEY")
+        .stdin(Stdio::null());
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(e) => panic!("could not run the llm-stream binary: {e}"),
+    };
+
+    let ok = output.status.success();
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+    assert!(
+        !ok,
+        "expected a failure exit\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("NVIDIA_API_KEY is not set; export it or pass --api-key"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains("invalid value"),
+        "clap must not filter the flag anymore: {stderr}"
+    );
+    assert!(stdout.is_empty(), "nothing should reach stdout: {stdout}");
+}
+
+#[test]
 fn models_without_credentials_names_the_login_command() {
     let (ok, stdout, stderr) = run_without_credentials(&["--models"]);
     assert!(

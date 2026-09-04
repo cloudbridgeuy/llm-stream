@@ -205,9 +205,9 @@ pub struct Args {
     #[clap(long)]
     pub top_k: Option<u32>,
 
-    /// How hard the model should think. Only the `chatgpt` provider honours it;
-    /// every other provider ignores it silently.
-    #[clap(long, value_parser = ["low", "medium", "high", "xhigh"])]
+    /// How hard the model should think. The `chatgpt` and `nvidia` providers
+    /// read it; every other provider ignores it silently.
+    #[clap(long)]
     pub reasoning_effort: Option<String>,
 
     /// Stream the model's reasoning summary before the answer. It goes to stdout
