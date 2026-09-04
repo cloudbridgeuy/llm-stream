@@ -1,6 +1,6 @@
 # llm-stream
 
-A Rust library and CLI for streaming interactions with LLM providers (OpenAI, Anthropic, Google, Mistral, Ollama, Groq, Jina, DeepSeek, and a ChatGPT subscription account), including a ChatGPT sign-in flow for authenticating with a subscription instead of a metered API key.
+A Rust library and CLI for streaming interactions with LLM providers (OpenAI, Anthropic, Google, Mistral, Ollama, Groq, Jina, DeepSeek, NVIDIA NIM, and a ChatGPT subscription account), including a ChatGPT sign-in flow for authenticating with a subscription instead of a metered API key.
 
 ## Language
 
@@ -130,7 +130,7 @@ Running `llm-stream --api chatgpt` sends the prompt, and any conversation histor
 - **AND** the answer streams to stdout unchanged
 
 #### Scenario: Unrecognised reasoning effort in the config file
-- **WHEN** the config file or the selected preset sets `reasoning_effort` to a value that is not `low`, `medium`, `high`, or `xhigh`
+- **WHEN** the flag, the config file, or the selected preset sets `reasoning_effort` to a value that is not `low`, `medium`, `high`, or `xhigh`
 - **THEN** the CLI errors with `unknown reasoning effort "<value>"; expected one of: low, medium, high, xhigh` and streams nothing
 
 ### Requirement: Reasoning effort defaults
@@ -156,11 +156,39 @@ An explicitly selected template's rendered system text overrides a selected pres
 - **THEN** the explicit system argument is used
 
 ### Requirement: Reasoning stream separator
-Any provider whose stream can carry both a reasoning summary and answer text (`chatgpt --reasoning-summary`, and `--api deepseek`, which always streams reasoning) prints a `---` rule between the two, and only when reasoning text actually arrived — never when the stream carried no reasoning. The rule travels on the same stream as the summary it separates: stdout on a terminal, stderr when stdout is piped, so a pipe never receives a stray rule.
+Any provider whose stream can carry both a reasoning summary and answer text (`chatgpt --reasoning-summary`, `nvidia --reasoning-summary`, and `--api deepseek`, which always streams reasoning) prints a `---` rule between the two, and only when reasoning text actually arrived — never when the stream carried no reasoning. The rule travels on the same stream as the summary it separates: stdout on a terminal, stderr when stdout is piped, so a pipe never receives a stray rule.
 
 #### Scenario: DeepSeek's answer stream has no stray separator
 - **WHEN** the operator runs `llm-stream --api deepseek "<prompt>" | cat`
 - **THEN** stdout contains only the answer, with no leading `---`
+
+### Requirement: NVIDIA NIM provider
+Running `llm-stream --api nvidia` sends the prompt to NVIDIA NIM, an OpenAI-compatible endpoint, and streams the answer to stdout, using `NVIDIA_API_KEY` for authentication.
+
+#### Scenario: Single-turn prompt
+- **WHEN** the operator runs `llm-stream --api nvidia "<prompt>"` with `NVIDIA_API_KEY` set
+- **THEN** the CLI streams the model's answer to stdout
+- **AND** no reasoning appears
+
+#### Scenario: Reasoning summary on a terminal
+- **WHEN** the operator runs `llm-stream --api nvidia --reasoning-summary "<prompt>"` on a terminal
+- **THEN** the model's reasoning summary streams to stdout first
+- **AND** a `---` rule follows on stdout
+- **AND** the answer streams to stdout after it
+
+#### Scenario: Reasoning summary with stdout piped
+- **WHEN** the operator runs the same command with stdout piped or redirected
+- **THEN** the summary and the `---` rule go to stderr as plain text
+- **AND** stdout holds the answer and nothing else
+
+#### Scenario: Reasoning effort is not validated locally
+- **WHEN** the operator runs `llm-stream --api nvidia --reasoning-effort <text> "<prompt>"`
+- **THEN** the CLI sends `<text>` verbatim to the server
+- **AND** a refusal reaches the operator as the server's own sentence
+
+#### Scenario: Missing key
+- **WHEN** the operator runs `llm-stream --api nvidia "<prompt>"` without `NVIDIA_API_KEY` set
+- **THEN** the CLI errors with `NVIDIA_API_KEY is not set; export it or pass --api-key` and streams nothing
 
 ### Requirement: Model discovery
 Running `llm-stream --models` asks the server which models the signed-in ChatGPT account may use, one at a time, and reports the answer for every candidate slug. It is a query: it succeeds whether the account can use every candidate or none of them.
