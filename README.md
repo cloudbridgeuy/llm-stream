@@ -139,7 +139,7 @@ llm-stream --api chatgpt --reasoning-summary "what is 17 * 23?"
 | `--login-status` | Prints the signed-in account, plan, and remaining access-token lifetime. Refreshes nothing. |
 | `--logout` | Deletes the stored credentials. Succeeds whether or not any existed. |
 | `--models` | Asks the server which models this account may use. Spends a little quota — see below. |
-| `--reasoning-effort <low\|medium\|high\|xhigh>` | How hard the model should think. Also settable per preset, or as `reasoning_effort` in `config.toml`. |
+| `--reasoning-effort <text>` | How hard the model should think. Read by `chatgpt` (`low\|medium\|high\|xhigh`) and `nvidia` (`low\|high\|max`, server-checked). Also settable per preset, or as `reasoning_effort` in `config.toml`. |
 | `--reasoning-summary` | Streams the model's reasoning summary to **stderr**, then a `---` rule, then the answer on stdout. The model decides whether to produce a summary at all. |
 
 This endpoint ignores `--temperature`, `--top-p`, and `--top-k`; use `--reasoning-effort`
@@ -177,6 +177,40 @@ and using it from a client other than Codex is a gray area under OpenAI's terms 
 Requests draw on your ChatGPT subscription's Codex allowance, not on a metered API key.
 
 Use it knowing that.
+
+### NVIDIA NIM
+
+`llm-stream` can reach NVIDIA NIM's OpenAI-compatible endpoint with a `NVIDIA_API_KEY`.
+The model defaults to `moonshotai/kimi-k3`:
+
+```bash
+export NVIDIA_API_KEY=...
+llm-stream --api nvidia "what is 17 * 23?"                 # answer only
+llm-stream --api nvidia --reasoning-summary "..."          # reasoning first, then a --- rule
+llm-stream --api nvidia --reasoning-effort max "..."       # max thinking
+```
+
+Or as a preset in `~/.config/llm-stream/config.toml`:
+
+```toml
+[[presets]]
+name = "kimi"
+api = "nvidia"
+model = "moonshotai/kimi-k3"
+```
+
+```bash
+llm-stream --preset kimi "what is 17 * 23?"
+```
+
+Two things to know:
+
+- **`--top-p` is fixed at 0.95 by the server**, so leave it unset — any other value is refused.
+- **`--reasoning-effort max` spends `--max-tokens` on thinking**, so give it headroom or the answer can come back empty.
+
+`--reasoning-effort` is passed to the server unchecked, which accepts `low`, `high`, and
+`max` (the default) and answers with its own sentence on refusal. Reasoning streams only
+under `--reasoning-summary`; without it the answer appears alone.
 
 ## Contributing
 

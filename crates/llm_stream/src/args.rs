@@ -109,8 +109,9 @@ impl FromStr for Api {
 #[command(
     long_about = "This Rust-based CLI enables users to interact with various Large Language Models
 (LLMs) directly from the terminal. Through this tool, you can send prompts to OpenAI,
-Anthropic, Google, Mistral, Mistral FIM, Ollama, Groq, DeepSeek, NVIDIA, a ChatGPT subscription
-account, or a local Claude Code install, and receive and handle responses from these models.
+Anthropic, Google, Mistral, Mistral FIM, Ollama, Groq, DeepSeek, NVIDIA NIM, a ChatGPT
+subscription account, or a local Claude Code install, and receive and handle responses from
+these models.
 
 The `chatgpt` provider works differently from the rest: it signs in to a ChatGPT
 subscription with `--login` instead of taking an API key, it is steered with
@@ -123,6 +124,9 @@ subscription rather than an API key. It honours `--model` and `--system` and str
 text only; the CLI it drives exposes no sampling controls, so `--temperature`, `--top-p`,
 `--top-k`, `--max-tokens` and `--min-tokens` are ignored with a warning. Set
 LLM_STREAM_CLAUDE_BIN when the binary is not named `claude` or is not on PATH.
+
+The `nvidia` provider reads `NVIDIA_API_KEY` and defaults to `moonshotai/kimi-k3`; it
+streams reasoning only when `--reasoning-summary` is given.
 
 The tool offers extensive configuration options, allowing you
 to specify parameters like model type, maximum and minimum tokens, temperature, top-p
