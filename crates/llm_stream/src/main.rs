@@ -17,6 +17,7 @@ mod google;
 mod groq;
 mod mistral;
 mod mistral_fim;
+mod nvidia;
 mod ollama;
 mod openai;
 mod prelude;
@@ -226,6 +227,7 @@ async fn try_main() -> Result<()> {
         Some(Api::MistralFim) => mistral_fim::run(args).await,
         Some(Api::Ollama) => ollama::run(args).await,
         Some(Api::Groq) => groq::run(args).await,
+        Some(Api::Nvidia) => nvidia::run(args).await,
         Some(Api::DeepSeek) => openai::reason(args).await,
         // The guard must precede the plain arm; `match` takes the first that
         // fits. This mirrors `Api::DeepSeek`, the other provider with a
