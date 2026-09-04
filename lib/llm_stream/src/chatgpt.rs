@@ -12,7 +12,7 @@ use futures::stream::{Stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-use crate::error::Error;
+use crate::error::{map_stream_error, Error};
 use crate::event::ReasonEvent;
 
 /// Base URL of the private Codex backend a ChatGPT subscription can reach.
@@ -361,28 +361,6 @@ impl SummaryJoin {
     }
 }
 
-/// Extracts the human-readable message from an error body.
-///
-/// The Codex endpoint answers a rejected request with
-/// `{"detail":"The 'gpt-4o' model is not supported when using Codex with a
-/// ChatGPT account."}`. Other OpenAI surfaces use `{"error":{"message":…}}`,
-/// and some use a bare `{"message":…}`, so all three are read here — the point
-/// of this function is that the operator sees a sentence, not a JSON blob.
-///
-/// Returns `None` when the body is not JSON or carries none of those keys; the
-/// caller falls back to showing the body verbatim.
-#[must_use]
-pub fn detail_of(body: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(body).ok()?;
-
-    let message = value
-        .get("detail")
-        .or_else(|| value.get("error").and_then(|error| error.get("message")))
-        .or_else(|| value.get("message"))?;
-
-    message.as_str().map(str::to_owned)
-}
-
 /// Subscription credentials for the Codex backend.
 #[derive(Debug, Clone)]
 pub struct Auth {
@@ -398,40 +376,6 @@ impl Auth {
             access_token,
             account_id,
         }
-    }
-}
-
-/// Turns a transport error into ours, reading the response body when the server
-/// rejected the request outright.
-///
-/// This is the impure half: it awaits the body off the wire. All of the
-/// deciding lives in [`detail_of`], which is pure and tested.
-async fn map_stream_error(error: eventsource_client::Error) -> Error {
-    let eventsource_client::Error::UnexpectedResponse(response, body) = error else {
-        return Error::from(error);
-    };
-
-    let status = response.status();
-
-    match body.body_bytes().await {
-        Ok(bytes) => {
-            let raw = String::from_utf8_lossy(&bytes).into_owned();
-            detail_of(&raw).map_or_else(
-                || {
-                    if raw.trim().is_empty() {
-                        Error::ApiError(format!("HTTP {status}"))
-                    } else {
-                        // No sentence we recognise — better the raw body than
-                        // nothing, since the operator has to act on it.
-                        Error::ApiError(format!("HTTP {status}: {raw}"))
-                    }
-                },
-                Error::ApiError,
-            )
-        }
-        Err(read_error) => Error::ApiError(format!(
-            "HTTP {status} (response body could not be read: {read_error})"
-        )),
     }
 }
 
@@ -866,34 +810,5 @@ mod tests {
             join.project(ResponseEvent::OutputTextDelta { delta: "x".to_string() }),
             ReasonEvent::Delta(ref s) if s == "x"
         ));
-    }
-
-    #[test]
-    fn detail_of_extracts_the_codex_rejection_sentence() {
-        let body = r#"{"detail":"The 'gpt-4o' model is not supported when using Codex with a ChatGPT account."}"#;
-        assert_eq!(
-            detail_of(body).as_deref(),
-            Some("The 'gpt-4o' model is not supported when using Codex with a ChatGPT account.")
-        );
-    }
-
-    #[test]
-    fn detail_of_reads_the_nested_openai_error_shape() {
-        let body = r#"{"error":{"message":"Invalid token","type":"invalid_request_error"}}"#;
-        assert_eq!(detail_of(body).as_deref(), Some("Invalid token"));
-    }
-
-    #[test]
-    fn detail_of_reads_a_bare_message() {
-        assert_eq!(detail_of(r#"{"message":"nope"}"#).as_deref(), Some("nope"));
-    }
-
-    #[test]
-    fn detail_of_returns_none_when_there_is_no_sentence_to_show() {
-        assert!(detail_of("not json").is_none());
-        assert!(detail_of("").is_none());
-        assert!(detail_of(r#"{"code":429}"#).is_none());
-        // A non-string `detail` is not a sentence.
-        assert!(detail_of(r#"{"detail":{"nested":"thing"}}"#).is_none());
     }
 }

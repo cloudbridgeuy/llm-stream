@@ -106,6 +106,21 @@ The child exits 0 on a refusal or an API error and reports it in a `result` line
 `result_error` reads that line — exit status alone would let a failed run look like an empty
 answer.
 
+### The NVIDIA Provider
+
+`--api nvidia` posts to NVIDIA NIM, an OpenAI-compatible endpoint, and defaults to
+`moonshotai/kimi-k3`. It is CLI-only: the module in `crates/llm_stream` drives
+`llm_stream::openai` the way `Api::DeepSeek` does, with no half in `lib/llm_stream`.
+The key comes from `NVIDIA_API_KEY`, and there is deliberately no local model
+allowlist: `--model` passes through verbatim and the server's own refusal reaches
+the operator.
+
+Reasoning is gated by `--reasoning-summary`: without the flag the model's thinking
+is dropped and only the answer streams, with the spinner running through the
+thinking; with it the summary streams first and a `---` rule follows. The CLI does
+not validate `--reasoning-effort` — the value is passed verbatim and the server
+checks it against its own vocabulary, answering with its own sentence on refusal.
+
 ### Configuration System
 - TOML-based configuration in `~/.config/llm-stream/config.toml`
 - Supports templates for prompt engineering

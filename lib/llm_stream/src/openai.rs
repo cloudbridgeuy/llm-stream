@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::error::Error;
+use crate::error::{map_stream_error, Error};
 
 // Chat Completions Api
 const CHAT_API: &str = "/chat/completions";
@@ -59,6 +59,10 @@ pub struct MessageBody {
     /// How many chat completion choices to generate for each input message. Note that you will be charged based on the number of generated tokens across all of the choices. Keep n as 1 to minimize costs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub n: Option<u32>,
+
+    /// How hard the model should think before answering.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 
     /// Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -196,31 +200,30 @@ impl Client {
             )
             .build();
 
-        let stream =
-            Box::pin(client.stream())
-                .map_err(Error::from)
-                .map_ok(move |event| match event {
-                    SSE::Connected(_) => ReasonEvent::Connected,
-                    SSE::Event(ev) => match serde_json::from_str::<ChatCompletionChunk>(&ev.data) {
-                        Ok(mut chunk) => {
-                            if chunk.choices.is_empty() {
-                                ReasonEvent::Empty
-                            } else if let Some(ref content) =
-                                chunk.choices[0].delta.reasoning_content
-                            {
-                                ReasonEvent::Reasoning(content.clone())
-                            } else {
-                                ReasonEvent::Delta(
-                                    chunk.choices[0].delta.content.take().unwrap_or_default(),
-                                )
-                            }
+        let stream = Box::pin(client.stream())
+            .or_else(|error| async move { Err(map_stream_error(error).await) })
+            .map_ok(move |event| match event {
+                SSE::Connected(_) => ReasonEvent::Connected,
+                SSE::Event(ev) => match serde_json::from_str::<ChatCompletionChunk>(&ev.data) {
+                    Ok(mut chunk) => {
+                        if chunk.choices.is_empty() {
+                            ReasonEvent::Empty
+                        } else if let Some(ref content) = chunk.choices[0].delta.reasoning_content {
+                            ReasonEvent::Reasoning(content.clone())
+                        } else {
+                            ReasonEvent::Delta(
+                                chunk.choices[0].delta.content.take().unwrap_or_default(),
+                            )
                         }
-                        Err(e) => ReasonEvent::Err(Error::Serde(e)),
-                    },
-                    SSE::Comment(comment) => ReasonEvent::Comment(comment),
-                });
+                    }
+                    Err(e) => ReasonEvent::Err(Error::Serde(e)),
+                },
+                SSE::Comment(comment) => ReasonEvent::Comment(comment),
+            });
 
-        Ok(stream)
+        // Boxed so the result is `Unpin` — `or_else` with an async block is not,
+        // and the CLI's stream handlers require it.
+        Ok(Box::pin(stream))
     }
 
     pub fn delta<'a>(
@@ -283,5 +286,28 @@ impl Client {
                 });
 
         Ok(stream)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reasoning_effort_is_omitted_when_none() {
+        let body = MessageBody::new("model", vec![]);
+        let value = serde_json::to_value(&body).expect("body must serialize");
+        assert!(value.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn reasoning_effort_is_serialized_when_set() {
+        let mut body = MessageBody::new("model", vec![]);
+        body.reasoning_effort = Some("max".into());
+        let value = serde_json::to_value(&body).expect("body must serialize");
+        assert_eq!(
+            value.get("reasoning_effort"),
+            Some(&serde_json::Value::String("max".into()))
+        );
     }
 }

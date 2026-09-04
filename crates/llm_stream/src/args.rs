@@ -28,6 +28,7 @@ pub enum Api {
     Groq,
     Mistral,
     MistralFim,
+    Nvidia,
     #[value(name = "chatgpt", alias = "chat-gpt", alias = "codex")]
     ChatGpt,
     #[value(name = "claude", alias = "claude-code")]
@@ -44,6 +45,7 @@ impl std::fmt::Display for Api {
             Api::Groq => write!(f, "Groq"),
             Api::Mistral => write!(f, "Mistral"),
             Api::MistralFim => write!(f, "MistralFim"),
+            Api::Nvidia => write!(f, "Nvidia"),
             Api::Ollama => write!(f, "Ollama"),
             Api::DeepSeek => write!(f, "DeepSeek"),
             Api::ChatGpt => write!(f, "ChatGpt"),
@@ -83,6 +85,9 @@ impl FromStr for Api {
             "deepseek" => Ok(Api::DeepSeek),
             "DeepSeek" => Ok(Api::DeepSeek),
             "Deepseek" => Ok(Api::DeepSeek),
+            "nvidia" => Ok(Api::Nvidia),
+            "Nvidia" => Ok(Api::Nvidia),
+            "NVIDIA" => Ok(Api::Nvidia),
             "chatgpt" => Ok(Api::ChatGpt),
             "ChatGpt" => Ok(Api::ChatGpt),
             "ChatGPT" => Ok(Api::ChatGpt),
@@ -104,8 +109,9 @@ impl FromStr for Api {
 #[command(
     long_about = "This Rust-based CLI enables users to interact with various Large Language Models
 (LLMs) directly from the terminal. Through this tool, you can send prompts to OpenAI,
-Anthropic, Google, Mistral, Mistral FIM, Ollama, Groq, DeepSeek, a ChatGPT subscription
-account, or a local Claude Code install, and receive and handle responses from these models.
+Anthropic, Google, Mistral, Mistral FIM, Ollama, Groq, DeepSeek, NVIDIA NIM, a ChatGPT
+subscription account, or a local Claude Code install, and receive and handle responses from
+these models.
 
 The `chatgpt` provider works differently from the rest: it signs in to a ChatGPT
 subscription with `--login` instead of taking an API key, it is steered with
@@ -118,6 +124,9 @@ subscription rather than an API key. It honours `--model` and `--system` and str
 text only; the CLI it drives exposes no sampling controls, so `--temperature`, `--top-p`,
 `--top-k`, `--max-tokens` and `--min-tokens` are ignored with a warning. Set
 LLM_STREAM_CLAUDE_BIN when the binary is not named `claude` or is not on PATH.
+
+The `nvidia` provider reads `NVIDIA_API_KEY` and defaults to `moonshotai/kimi-k3`; it
+streams reasoning only when `--reasoning-summary` is given.
 
 The tool offers extensive configuration options, allowing you
 to specify parameters like model type, maximum and minimum tokens, temperature, top-p
@@ -200,9 +209,9 @@ pub struct Args {
     #[clap(long)]
     pub top_k: Option<u32>,
 
-    /// How hard the model should think. Only the `chatgpt` provider honours it;
-    /// every other provider ignores it silently.
-    #[clap(long, value_parser = ["low", "medium", "high", "xhigh"])]
+    /// How hard the model should think. The `chatgpt` and `nvidia` providers
+    /// read it; every other provider ignores it silently.
+    #[clap(long)]
     pub reasoning_effort: Option<String>,
 
     /// Stream the model's reasoning summary before the answer. It goes to stdout
@@ -364,4 +373,24 @@ pub struct Args {
     #[clap(long, default_value = "false")]
     #[serde(skip_serializing, default)]
     pub models: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_from_str_accepts_nvidia_case_variants(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        for s in ["nvidia", "Nvidia", "NVIDIA"] {
+            let api: Api = s.parse()?;
+            assert_eq!(api, Api::Nvidia, "parse({s:?})");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn api_nvidia_displays_as_nvidia() {
+        assert_eq!(Api::Nvidia.to_string(), "Nvidia");
+    }
 }
