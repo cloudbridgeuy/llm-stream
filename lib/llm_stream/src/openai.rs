@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::error::Error;
+use crate::error::{map_stream_error, Error};
 
 // Chat Completions Api
 const CHAT_API: &str = "/chat/completions";
@@ -196,31 +196,30 @@ impl Client {
             )
             .build();
 
-        let stream =
-            Box::pin(client.stream())
-                .map_err(Error::from)
-                .map_ok(move |event| match event {
-                    SSE::Connected(_) => ReasonEvent::Connected,
-                    SSE::Event(ev) => match serde_json::from_str::<ChatCompletionChunk>(&ev.data) {
-                        Ok(mut chunk) => {
-                            if chunk.choices.is_empty() {
-                                ReasonEvent::Empty
-                            } else if let Some(ref content) =
-                                chunk.choices[0].delta.reasoning_content
-                            {
-                                ReasonEvent::Reasoning(content.clone())
-                            } else {
-                                ReasonEvent::Delta(
-                                    chunk.choices[0].delta.content.take().unwrap_or_default(),
-                                )
-                            }
+        let stream = Box::pin(client.stream())
+            .or_else(|error| async move { Err(map_stream_error(error).await) })
+            .map_ok(move |event| match event {
+                SSE::Connected(_) => ReasonEvent::Connected,
+                SSE::Event(ev) => match serde_json::from_str::<ChatCompletionChunk>(&ev.data) {
+                    Ok(mut chunk) => {
+                        if chunk.choices.is_empty() {
+                            ReasonEvent::Empty
+                        } else if let Some(ref content) = chunk.choices[0].delta.reasoning_content {
+                            ReasonEvent::Reasoning(content.clone())
+                        } else {
+                            ReasonEvent::Delta(
+                                chunk.choices[0].delta.content.take().unwrap_or_default(),
+                            )
                         }
-                        Err(e) => ReasonEvent::Err(Error::Serde(e)),
-                    },
-                    SSE::Comment(comment) => ReasonEvent::Comment(comment),
-                });
+                    }
+                    Err(e) => ReasonEvent::Err(Error::Serde(e)),
+                },
+                SSE::Comment(comment) => ReasonEvent::Comment(comment),
+            });
 
-        Ok(stream)
+        // Boxed so the result is `Unpin` — `or_else` with an async block is not,
+        // and the CLI's stream handlers require it.
+        Ok(Box::pin(stream))
     }
 
     pub fn delta<'a>(
