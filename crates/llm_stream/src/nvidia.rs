@@ -1,3 +1,5 @@
+use futures::StreamExt;
+use llm_stream::event::ReasonEvent;
 use llm_stream::openai;
 
 use crate::prelude::*;
@@ -71,10 +73,62 @@ pub async fn run(mut args: Args) -> Result<()> {
     if let Some(max_tokens) = args.max_tokens {
         body.max_tokens = Some(max_tokens);
     }
+    body.reasoning_effort = args.reasoning_effort.take();
 
     log::info!("body: {:#?}", body);
 
-    let stream = client.reason(&body)?;
+    let summary = args.reasoning_summary;
+    let stream = client
+        .reason(&body)?
+        .map(move |result| result.map(|event| gate(event, summary)));
 
     handle_reason_stream(stream, args).await
+}
+
+/// Drops reasoning events unless the operator asked for the summary.
+///
+/// Reasoning consumes the stream but not the operator's screen, so without the
+/// flag the model still thinks while nothing but the spinner shows it.
+pub(crate) fn gate(event: ReasonEvent, summary: bool) -> ReasonEvent {
+    match (event, summary) {
+        (ReasonEvent::Reasoning(_), false) => ReasonEvent::Empty,
+        (event, _) => event,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reasoning_is_dropped_without_the_summary_flag() {
+        assert!(matches!(
+            gate(ReasonEvent::Reasoning("x".into()), false),
+            ReasonEvent::Empty
+        ));
+    }
+
+    #[test]
+    fn reasoning_survives_with_the_summary_flag() {
+        assert!(matches!(
+            gate(ReasonEvent::Reasoning("x".into()), true),
+            ReasonEvent::Reasoning(_)
+        ));
+    }
+
+    #[test]
+    fn deltas_pass_through_untouched() {
+        assert!(matches!(
+            gate(ReasonEvent::Delta("y".into()), false),
+            ReasonEvent::Delta(_)
+        ));
+    }
+
+    #[test]
+    fn empty_events_pass_through_untouched() {
+        assert!(matches!(
+            gate(ReasonEvent::Empty, false),
+            ReasonEvent::Empty
+        ));
+    }
 }

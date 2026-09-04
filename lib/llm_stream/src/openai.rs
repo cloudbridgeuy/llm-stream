@@ -60,6 +60,10 @@ pub struct MessageBody {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub n: Option<u32>,
 
+    /// How hard the model should think before answering.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+
     /// Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f32>,
@@ -282,5 +286,28 @@ impl Client {
                 });
 
         Ok(stream)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reasoning_effort_is_omitted_when_none() {
+        let body = MessageBody::new("model", vec![]);
+        let value = serde_json::to_value(&body).expect("body must serialize");
+        assert!(value.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn reasoning_effort_is_serialized_when_set() {
+        let mut body = MessageBody::new("model", vec![]);
+        body.reasoning_effort = Some("max".into());
+        let value = serde_json::to_value(&body).expect("body must serialize");
+        assert_eq!(
+            value.get("reasoning_effort"),
+            Some(&serde_json::Value::String("max".into()))
+        );
     }
 }
